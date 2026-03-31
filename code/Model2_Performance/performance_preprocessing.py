@@ -14,7 +14,7 @@ from sklearn.preprocessing import LabelEncoder
 warnings.filterwarnings("ignore")
 
 DATA_DIR = "dataset"
-ARTIFACTS_DIR = "PEM"
+ARTIFACTS_DIR = "."
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
 
 TARGET = "normalized_performance_score"
