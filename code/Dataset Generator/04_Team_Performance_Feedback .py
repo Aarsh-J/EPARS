@@ -14,7 +14,7 @@ from datetime import date, timedelta
 random.seed(42)
 np.random.seed(42)
 
-OUT_DIR = "."
+OUT_DIR = "./trial_dataset_generation"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 def clamp(val, lo, hi):
@@ -39,7 +39,7 @@ def normal_pct(mu, sigma, lo=0.0, hi=100.0):
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. TEAM FORMATIONS
 # ═══════════════════════════════════════════════════════════════════════════════
-NUM_TEAMS = 150
+NUM_TEAMS = 100
 
 FORMATION_METHOD  = ["Manual", "AI-Recommended", "Hybrid"]
 FORMATION_WEIGHTS = [0.35, 0.40, 0.25]

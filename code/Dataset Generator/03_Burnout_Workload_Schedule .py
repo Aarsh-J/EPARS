@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 random.seed(42)
 np.random.seed(42)
 
-OUT_DIR = "."
+OUT_DIR = "./trial_dataset_generation"
 
 # ─── Date range for time-series data ─────────────────────────────────────────
 HISTORY_START = date(2024, 1, 1)
@@ -77,7 +77,7 @@ FATIGUE_LEVELS  = ["Low", "Medium", "High"]
 WORK_LOCATIONS  = ["Office", "Home", "Remote", "Client Site"]
 SPECIAL_CIRC    = ["Holiday", "Training Day", "Client Visit", "Team Offsite", None, None, None, None]
 
-MAX_WH_ROWS = 12000   # cap total rows to stay within schema recommendation
+MAX_WH_ROWS = 1000   # cap total rows to stay within schema recommendation
 
 def generate_workload_history(employees_df, stress_profiles):
     """Sampled working-day records per employee, capped at MAX_WH_ROWS total."""

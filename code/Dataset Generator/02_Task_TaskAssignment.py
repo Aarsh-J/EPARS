@@ -15,9 +15,9 @@ random.seed(42)
 np.random.seed(42)
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-NUM_TASKS       = 2000
-NUM_ASSIGNMENTS = 3000
-OUT_DIR         = "."
+NUM_TASKS       = 800
+NUM_ASSIGNMENTS = 500
+OUT_DIR         = "./trial_dataset_generation"
 
 # ─── Lookup tables ────────────────────────────────────────────────────────────
 TASK_TYPES = ["Development","Design","Testing","Research","Documentation","Meeting","DevOps","Review"]

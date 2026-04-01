@@ -14,9 +14,9 @@ random.seed(42)
 np.random.seed(42)
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-NUM_EMPLOYEES = 200
-NUM_PROJECTS  = 100
-OUT_DIR       = "."   # change if needed
+NUM_EMPLOYEES = 100
+NUM_PROJECTS  = 80
+OUT_DIR       = "./trial_dataset_generation"   # change if needed
 
 # ─── Lookup tables ────────────────────────────────────────────────────────────
 FIRST_NAMES = [
