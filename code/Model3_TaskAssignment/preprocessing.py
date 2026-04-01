@@ -31,8 +31,7 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────────────────────
 # 0. Paths
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DATA_DIR   = os.path.join(BASE_DIR, "dataset_v2")
+DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "artifacts")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -47,6 +46,23 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 #       here — they stay in master_preprocessed.csv for traceability.
 #       They are excluded from the feature matrix inside make_splits().
 DROP_COLS = [
+    # Reduced feature set — dropped to keep model lean and explainable
+    "hours_ratio", "team_size_required", "meeting_hours_required",
+    "overall_suitability_score", "team_compatibility_score",
+    "leadership_potential", "days_since_last_leave",
+    "successful_project_count", "failed_project_count",
+    "avg_productivity", "avg_reliability", "utilization_rate",
+    "schedule_conflict_rate", "avg_productivity_during",
+    "quality_risk_score", "next_milestone_risk", "roi_estimate",
+    "budget", "meeting_hours_per_week", "completed_milestones",
+    "stakeholder_satisfaction_proj", "documentation_quality",
+    "communication_frequency", "status",
+    "n_primary_skills", "has_certifications",
+    "overall_burnout_risk", "emotional_exhaustion_score",
+    "workload_pressure", "job_demands", "job_control",
+    "late_hours_frequency", "weekend_work_frequency",
+    "predicted_burnout_90days", "assignment_date",
+
     # Metadata (not IDs — IDs are kept in master for traceability)
     "task_name", "task_description", "project_name", "project_description",
     "first_name", "last_name", "email",
@@ -89,54 +105,52 @@ DROP_COLS = [
     "productivity_trend", "project_type", "remote_work_status", "role",
     "seniority_level", "stress_level", "total_milestones",
     "weekly_capacity_hours", "years_of_experience",
+
+    # High multicollinearity — redundant with interaction features or stronger siblings
+    "engagement_score", "motivation_level", "resilience_score",
+    "job_satisfaction", "energy_level",
+    "overall_suitability_score",
+    "allocated_resources", "consumed_resources",
+    "total_scheduled_hours", "n_schedule_events",
+    "is_overdue",
+    "rework_required",
+    "predicted_burnout_30days",
 ]
 
 # Final numeric feature columns (kept after importance analysis)
 NUMERIC_COLS = [
-    # Task features (all available at assignment time)
+    # Task features
     "estimated_hours", "story_points",
-    "technical_complexity_score", "planned_duration_days", "hours_ratio",
+    "technical_complexity_score", "planned_duration_days",
     "n_dependencies", "n_required_skills", "has_cert_req",
-    "days_overdue", "buffer_days",
-    "rework_count",
-    "team_size_required", "meeting_hours_required",
-    # Assignment match scores (pre-assignment only)
+    "days_overdue", "buffer_days", "rework_count",
+    # Assignment match scores
     "skill_match_score", "availability_match_score",
     "workload_compatibility_score", "experience_match_score",
-    "overall_suitability_score", "team_compatibility_score",
     "reassignment_count",
     # Employee features
     "technical_proficiency_score", "domain_expertise_score",
     "historical_performance_score", "average_task_completion_rate",
-    "collaboration_score", "communication_effectiveness",
-    "leadership_potential", "burnout_risk_score",
-    "recent_overtime_hours", "days_since_last_leave",
-    "work_life_balance_score", "successful_project_count",
-    "failed_project_count",
-    # Project features
-    "success_probability", "delay_risk_score_proj",
-    "budget_overrun_risk", "quality_risk_score", "scope_creep_indicator",
-    "allocated_resources", "consumed_resources", "roi_estimate",
-    "budget", "strategic_importance", "documentation_quality",
-    "meeting_hours_per_week", "next_milestone_risk",
-    "stakeholder_satisfaction", "stakeholder_satisfaction_proj",
-    "days_ahead_behind", "completed_milestones",
-    "assignment_date",
+    "collaboration_score", "burnout_risk_score",
+    "work_life_balance_score", "recent_overtime_hours",
+    # Review aggregates
+    "avg_perf_score", "avg_quality", "avg_timeliness", "on_time_rate",
+    # Project context
+    "delay_risk_score_proj", "budget_overrun_risk",
+    "success_probability", "strategic_importance",
+    "days_ahead_behind", "scope_creep_indicator",
 ]
 
 # Final categorical feature columns
 CATEGORICAL_COLS = [
     "task_type", "priority", "complexity",
     "required_role", "required_seniority", "required_certifications",
-    "risk_level", "business_impact", "communication_frequency",
-    "status", "assignment_method", "acceptance_status",
+    "risk_level", "business_impact", "assignment_method", "acceptance_status",
 ]
 
 # Boolean columns (will be cast to int)
 BOOL_COLS = [
-    "is_overdue", "rework_required", "requires_collaboration",
-    "has_subtasks", "technical_debt_added",
-    "team_size",
+    "requires_collaboration", "has_subtasks", "technical_debt_added",
 ]
 
 TARGETS = {
@@ -503,9 +517,7 @@ def engineer_interactions(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Scheduled workload relative to capacity
-    df["schedule_load_ratio"] = (
-        df.get("total_scheduled_hours", 0) / 40.0
-    ).clip(0, 3)
+    df["schedule_load_ratio"] = pd.Series(0.0, index=df.index)
 
     return df
 
