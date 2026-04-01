@@ -174,3 +174,17 @@ with open(os.path.join(ARTIFACTS_DIR, "label_encoder_review_type.pkl"), "wb") as
 print(f"[Saved] label_encoder_review_type.pkl")
 
 print(f"\nAll data saved to : ./{ARTIFACTS_DIR}/")
+
+df = pd.read_csv("PEM/processed_data.csv")
+
+# Plot histogram 
+plt.figure(figsize=(8, 6))
+plt.hist(df["normalized_performance_score"], bins=30)
+# Labels & title
+plt.xlabel("Normalized Performance Score")
+plt.ylabel("Frequency")
+plt.title("Performance Score Distribution")
+# Save as PNG
+plt.savefig("performance_distribution.png", bbox_inches='tight', dpi=300)
+# Show plot (optional)
+plt.show()
