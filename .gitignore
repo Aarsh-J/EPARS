@@ -1,6 +1,5 @@
 sampled_dataset/*
 dataset_v1/*
-dataset/*
 
 code/Dataset Generator/__pycache__/*
 code/Model4_TeamFormation/FT2/*
