@@ -4,7 +4,7 @@ import os
 
 # ── Config ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-INPUT_DIR  = os.path.join(SCRIPT_DIR, "../../dataset_v2")  # folder containing your CSVs
+INPUT_DIR  = os.path.join(SCRIPT_DIR, "../../dataset")  # folder containing your CSVs
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "../../sampled_dataset")  # output folder
 N_EMPLOYEES = 100          # anchor: pick 40 employees → pulls related rows from all tables
 
