@@ -1,6 +1,5 @@
 # ===============================================================
 # preprocessing.py
-# FINAL VERSION (Feedback Table Removed)
 # Uses:
 # 1. performance_reviews.csv
 # 2. employees.csv
@@ -27,7 +26,7 @@ TARGET = "overall_performance_score"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 print("=" * 70)
-print("PREPROCESSING STARTED (NO FEEDBACK DATA)")
+print("PREPROCESSING STARTED")
 print("=" * 70)
 
 # ===============================================================
