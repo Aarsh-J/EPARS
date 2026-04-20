@@ -62,20 +62,6 @@ df = df.merge(wh_agg, on="employee_id", how="left")
 print("\nMerged Shape:", df.shape)
 
 # ===============================================================
-# ENCODE CATEGORICAL COLUMNS
-# ===============================================================
-
-encoders = {}
-
-cat_cols = df.select_dtypes(include="object").columns.tolist()
-
-for col in cat_cols:
-    le = LabelEncoder()
-    df[col] = df[col].astype(str)
-    df[col] = le.fit_transform(df[col])
-    encoders[col] = le
-
-# ===============================================================
 # HANDLE MISSING VALUES
 # ===============================================================
 
@@ -88,12 +74,8 @@ df[num_cols] = df[num_cols].fillna(df[num_cols].median())
 
 df.to_csv("processed_data.csv", index=False)
 
-with open("encoders.pkl", "wb") as f:
-    pickle.dump(encoders, f)
-
 print("\nSaved Files:")
 print("processed_data.csv")
-print("encoders.pkl")
 
 print("\nRows :", len(df))
 print("Cols :", len(df.columns))
