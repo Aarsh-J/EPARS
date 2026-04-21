@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "generated_at": "2026-04-21T21:21:45",
+    "total_employees": 1,
+    "thresholds": {
+      "low_max": 19.48,
+      "medium_max": 37.78,
+      "description": "Low < 19.48 | Medium 19.48\u201337.78 | High \u2265 37.78"
+    }
+  },
+  "summary": {
+    "low": 0,
+    "medium": 1,
+    "high": 0
+  },
+  "employees": [
+    {
+      "employee_id": "EMP001",
+      "name": "Jordan Nair",
+      "department": "Engineering",
+      "role": "Team Lead",
+      "seniority_level": "Mid",
+      "burnout_score": 25.54,
+      "risk_category": "Medium",
+      "signals": {
+        "late_hours_frequency": 2.0,
+        "vacation_days_unused": 5.0,
+        "job_satisfaction": 7.0,
+        "role_ambiguity": 0.0,
+        "stress_load": 1.0,
+        "pressure_index": 2.0
+      }
+    }
+  ]
+}
