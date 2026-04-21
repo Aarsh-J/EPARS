@@ -47,7 +47,7 @@ required_cols = [
 
     # Behavioural Cluster
     "communication_score",
-    "collaboration_score",
+    "collaboration_score_y",
     "leadership_score",
     "initiative_score",
     "time_management_score",
