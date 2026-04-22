@@ -49,32 +49,29 @@ print(f"  Shape: {df.shape}")
 print(f"  Target range: {df[TARGET_COL].min():.1f} – {df[TARGET_COL].max():.1f}")
 
 
-# ── Step 2 — Time-based train / test split ────────────────────
-# Train on the oldest TRAIN_SIZE_RATIO of teams; test on the rest.
-# This mirrors real deployment: model is built on historical data
-# and evaluated on teams it has never seen.
+# ── Step 2 — Random 80/20 train / test split ─────────────────
+# Random split is appropriate here because team performance features
+# (burnout, skills, experience) have no time dependency — a team
+# formed in January and one in December with the same member
+# profiles should score identically.
 
-formation_dates = pd.to_datetime(df["formation_date"])
-split_date      = formation_dates.quantile(TRAIN_SIZE_RATIO)
-
-train_mask = formation_dates <= split_date
-test_mask  = ~train_mask
-
-print(f"\nTime-based split at {split_date.date()}")
-print(f"  Train : {train_mask.sum()} teams  (up to {split_date.date()})")
-print(f"  Test  : {test_mask.sum()} teams   (after {split_date.date()})")
-
-
-# ── Step 3 — Build X / y ─────────────────────────────────────
+from sklearn.model_selection import train_test_split as _tts
 
 ALL_DROP = DROP_COLS + [TARGET_COL]    # team_id, formation_date, target
 X = df.drop(columns=ALL_DROP)
 y = df[TARGET_COL]
 
-X_train_raw = X[train_mask].reset_index(drop=True)
-X_test_raw  = X[test_mask].reset_index(drop=True)
-y_train     = y[train_mask].reset_index(drop=True)
-y_test      = y[test_mask].reset_index(drop=True)
+X_train_raw, X_test_raw, y_train, y_test = _tts(
+    X, y, test_size=1 - TRAIN_SIZE_RATIO, random_state=RANDOM_STATE
+)
+X_train_raw = X_train_raw.reset_index(drop=True)
+X_test_raw  = X_test_raw.reset_index(drop=True)
+y_train     = y_train.reset_index(drop=True)
+y_test      = y_test.reset_index(drop=True)
+
+print(f"\nRandom 80/20 split (random_state={RANDOM_STATE})")
+print(f"  Train : {len(y_train)} teams")
+print(f"  Test  : {len(y_test)} teams")
 
 
 # ── Step 4 — Remove near-zero-variance features ───────────────
@@ -132,11 +129,13 @@ print("=" * 60)
 
 results = {}   # model_name → {metrics, model, uses_scaler}
 
-# ── Model A — Random Forest (recommended default) ─────────────
+# ── Model A — Random Forest ───────────────────────────────────
+# max_depth=10 + min_samples_leaf=5 prevents deep memorisation
 rf = RandomForestRegressor(
-    n_estimators=200,
-    max_depth=None,
-    min_samples_leaf=3,
+    n_estimators=300,
+    max_depth=10,
+    min_samples_leaf=5,
+    max_features=0.5,
     random_state=RANDOM_STATE,
     n_jobs=-1,
 )
@@ -145,11 +144,14 @@ metrics_rf = evaluate("Random Forest", y_test, rf.predict(X_test_imp))
 results["Random Forest"] = {"model": rf, "metrics": metrics_rf, "uses_scaler": False}
 
 # ── Model B — Gradient Boosting ───────────────────────────────
+# Shallow trees + slower learning rate reduces overfitting
 gb = GradientBoostingRegressor(
-    n_estimators=150,
-    learning_rate=0.05,
-    max_depth=4,
+    n_estimators=300,
+    learning_rate=0.02,
+    max_depth=3,
+    min_samples_leaf=10,
     subsample=0.8,
+    max_features=0.7,
     random_state=RANDOM_STATE,
 )
 gb.fit(X_train_imp, y_train)
@@ -157,20 +159,24 @@ metrics_gb = evaluate("Gradient Boosting", y_test, gb.predict(X_test_imp))
 results["Gradient Boosting"] = {"model": gb, "metrics": metrics_gb, "uses_scaler": False}
 
 # ── Model C — Ridge Regression (baseline) ────────────────────
-ridge = Ridge(alpha=1.0)
+# Higher alpha = stronger regularisation
+ridge = Ridge(alpha=10.0)
 ridge.fit(X_train_scaled, y_train)
 metrics_ridge = evaluate("Ridge Regression", y_test, ridge.predict(X_test_scaled))
 results["Ridge Regression"] = {"model": ridge, "metrics": metrics_ridge, "uses_scaler": True}
 
-# ── Model D — XGBoost (optional) ─────────────────────────────
+# ── Model D — XGBoost ────────────────────────────────────────
+# Heavier regularisation (reg_alpha, reg_lambda, min_child_weight)
 if XGBOOST_AVAILABLE:
     xgb = XGBRegressor(
-        n_estimators=200,
-        learning_rate=0.05,
-        max_depth=5,
+        n_estimators=300,
+        learning_rate=0.02,
+        max_depth=3,
         subsample=0.8,
-        colsample_bytree=0.8,
-        reg_alpha=0.1,
+        colsample_bytree=0.7,
+        reg_alpha=1.0,
+        reg_lambda=2.0,
+        min_child_weight=10,
         random_state=RANDOM_STATE,
         verbosity=0,
     )
@@ -205,27 +211,14 @@ elif hasattr(model_obj, "coef_"):
         print(f"  {feat:<40s} {val:.4f}")
 
 
-# ── Step 11 — Re-fit best model on full dataset ───────────────
-# After selecting the winner on the test split, retrain on ALL
-# data so the saved model benefits from every example.
+# ── Step 11 — Report training R² on the 80% train set ────────
+# Model is already fitted on X_train_imp — no re-fit needed.
+# Training R² is reported on the same data used to fit the model.
 
-print(f"\nRe-fitting {best_name} on full dataset...")
-
-X_all_filt = X[kept_cols]
-X_all_imp  = pd.DataFrame(imputer.fit_transform(X_all_filt), columns=kept_cols)
-
-if best["uses_scaler"]:
-    X_all_final = pd.DataFrame(scaler.fit_transform(X_all_imp), columns=kept_cols)
-else:
-    X_all_final = X_all_imp
-    # Re-fit scaler on all data anyway (used for Ridge fallback in inference)
-    scaler.fit(X_all_imp)
-
-model_obj.fit(X_all_final, y)
-
-# Training R² on full set (in-sample, informational only)
-train_r2 = r2_score(y, model_obj.predict(X_all_final))
-print(f"  Training R² (full data): {train_r2:.4f}")
+train_r2 = r2_score(y_train, model_obj.predict(
+    X_train_scaled if best["uses_scaler"] else X_train_imp
+))
+print(f"\n  Training R² (train set): {train_r2:.4f}")
 
 
 # ── Step 12 — Save artefacts ──────────────────────────────────
@@ -253,8 +246,8 @@ metadata = {
     "model_version": payload["model_version"],
     "feature_names": kept_cols,
     "n_features"   : len(kept_cols),
-    "n_train_teams": int(train_mask.sum()),
-    "n_test_teams" : int(test_mask.sum()),
+    "n_train_teams": len(y_train),
+    "n_test_teams" : len(y_test),
     "test_metrics" : best["metrics"],
     "train_r2_full": round(train_r2, 4),
     "all_model_results": {k: v["metrics"] for k, v in results.items()},

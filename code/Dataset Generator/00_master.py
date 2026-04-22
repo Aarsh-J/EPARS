@@ -11,16 +11,16 @@ import os
 
 # ─── Master Row / Table Counts ────────────────────────────────────────────────
 CONFIG = {
-    "NUM_EMPLOYEES":     1500,
-    "NUM_PROJECTS":       800,
-    "NUM_TEAMS":         1000,
-    "NUM_TASKS":         10000,
-    "NUM_ASSIGNMENTS":   15000,
-    "NUM_SCHEDULE_ROWS": 50000,
-    "NUM_WORKLOAD_ROWS": 50000,
-    "NUM_BURNOUT_ROWS":  20000,
-    "NUM_REVIEWS":       4000,
-    "NUM_FEEDBACK":      20000,
+    "NUM_EMPLOYEES":     2000,
+    "NUM_PROJECTS":      1200,
+    "NUM_TEAMS":         2500,
+    "NUM_TASKS":         15000,
+    "NUM_ASSIGNMENTS":   22000,
+    "NUM_SCHEDULE_ROWS": 60000,
+    "NUM_WORKLOAD_ROWS": 60000,
+    "NUM_BURNOUT_ROWS":  25000,
+    "NUM_REVIEWS":       6000,
+    "NUM_FEEDBACK":      25000,
     "OUT_DIR": "./output",
 }
 

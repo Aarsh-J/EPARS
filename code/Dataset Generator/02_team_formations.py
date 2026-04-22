@@ -311,29 +311,45 @@ def generate_team_formations(employees_df: pd.DataFrame,
 
         # Outcome columns — filled for completed projects; None for ongoing
         proj_row    = projects_df[projects_df["project_id"] == proj_id].iloc[0]
-        completed   = p_status == "Completed" and random.random() > 0.15
+        completed   = p_status == "Completed" and random.random() > 0.05
         partial     = proj_row["completion_percentage"] > 50 and not completed
 
+        comp_days = round((p_end - form_date).days * random.uniform(0.85, 1.20), 1) \
+                    if completed else None
+
         if completed:
+            # Outcome metrics correlated with pred_success so actual_perf has genuine signal
+            deadline_prob = clamp(0.40 + pred_success * 0.005, 0.40, 0.90)
+            met_deadline  = random.random() < deadline_prob
+
+            quality_mean = clamp(3.0 + pred_success * 0.05, 4.0, 9.5)
+            quality_rat  = int(clamp(round(np.random.normal(quality_mean, 1.0)), 1, 10))
+
+            # higher pred → closer to 100 (on budget); lower pred → overrun
+            budget_mean = clamp(100 + (70 - pred_success) * 0.15, 90.0, 125.0)
+            budget_adh  = clamp(round(np.random.normal(budget_mean, 8), 1), 70.0, 140.0)
+
+            sat_mean = clamp(3.0 + pred_success * 0.05, 4.0, 9.5)
+            stkh_sat = int(clamp(round(np.random.normal(sat_mean, 1.0)), 1, 10))
+
+            # actual_performance_score per formulas.md
+            q_norm   = quality_rat / 10 * 100
+            dl_norm  = 100.0 if met_deadline else 50.0
+            ba_norm  = max(0.0, 100 - max(budget_adh - 100, 0) * 1.5)
+            sat_norm = stkh_sat / 10 * 100
             actual_perf = clamp(round(
-                pred_success * 0.70 + np.random.normal(pred_success * 0.30, 8), 1
-            ), 20.0, 100.0)
-        elif partial:
-            actual_perf = clamp(round(
-                pred_success * 0.60 + np.random.normal(pred_success * 0.35, 12), 1
+                q_norm   * 0.35
+                + dl_norm  * 0.30
+                + ba_norm  * 0.20
+                + sat_norm * 0.15
+                + np.random.normal(0, 3), 1
             ), 20.0, 100.0)
         else:
-            actual_perf = None
-
-        comp_days    = round((p_end - form_date).days * random.uniform(0.85, 1.20), 1) \
-                       if completed else None
-        met_deadline = (random.random() > 0.25) if completed else None
-        quality_rat  = int(clamp(round(np.random.normal(7.5, 1.2)), 1, 10)) \
-                       if completed else None
-        budget_adh   = clamp(round(np.random.normal(100, 12), 1), 70.0, 140.0) \
-                       if completed else None
-        stkh_sat     = int(clamp(round(np.random.normal(7.5, 1.2)), 1, 10)) \
-                       if completed else None
+            met_deadline = None
+            quality_rat  = None
+            budget_adh   = None
+            stkh_sat     = None
+            actual_perf  = None
 
         proj_completed = completed
 

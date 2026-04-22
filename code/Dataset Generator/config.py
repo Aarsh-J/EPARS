@@ -155,7 +155,7 @@ LAST_NAMES = [
 # ─── Project lookups ──────────────────────────────────────────────────────────
 PROJECT_TYPES = ["Product Development", "Marketing", "Internal", "Research", "Client Project"]
 PROJ_STATUS   = ["Planning", "Active", "On Hold", "Completed", "Cancelled"]
-PROJ_STATUS_W = [0.10, 0.40, 0.10, 0.35, 0.05]
+PROJ_STATUS_W = [0.08, 0.25, 0.07, 0.55, 0.05]
 COMPLEXITY    = ["Low", "Medium", "High", "Very High"]
 PRIORITY      = ["Low", "Medium", "High", "Critical"]
 PRIORITY_W    = [0.10, 0.35, 0.35, 0.20]
