@@ -3,7 +3,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
 from sklearn.model_selection import train_test_split, cross_val_score, KFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import Ridge
@@ -36,10 +35,7 @@ behavioral_cluster = (
 
 quality_norm = col("quality_of_work_score") * 10
 
-if "productivity_score_x" in df.columns:
-    productivity_norm = col("productivity_score_x") * 10
-else:
-    productivity_norm = col("productivity_score_y") * 10
+productivity_norm = col("productivity_score") * 10
 
 formula_score = (
     technical_cluster * 0.30 +
@@ -75,7 +71,6 @@ X_all_s = scaler.transform(X)
 # ---------------------------------------------------
 model = Ridge(alpha=1)
 model.fit(X_train_s, y_train)
-
 pred = np.clip(model.predict(X_test_s), 0, 100)
 
 # ---------------------------------------------------
@@ -89,7 +84,7 @@ cv = KFold(n_splits=5, shuffle=True, random_state=42)
 cv_r2 = cross_val_score(model, X_all_s, y, cv=cv, scoring="r2").mean()
 
 print("="*60)
-print("RIDGE FINAL MODEL")
+print("RIDGE MODEL")
 print("="*60)
 print("MAE :", round(mae,3))
 print("RMSE:", round(rmse,3))
