@@ -1,0 +1,5 @@
+model,val_mae,val_rmse,val_r2,test_mae,test_rmse,test_r2
+Decision Tree,8.2559,13.0479,0.7401,8.2768,12.9884,0.7485
+Random Forest,7.5594,9.8605,0.8516,7.4783,9.7691,0.8578
+Gradient Boosting,8.7676,11.206,0.8083,8.5901,11.0209,0.819
+XGBoost,7.9941,10.3364,0.8369,7.9228,10.3278,0.841

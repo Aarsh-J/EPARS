@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 # 0. Paths
 # ─────────────────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(__file__)
-DATA_DIR   = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "dataset_v2"))
+DATA_DIR   = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "dataset"))
 OUTPUT_DIR = os.path.join(BASE_DIR, "artifacts")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -77,6 +77,8 @@ DROP_COLS = [
     "weekly_capacity_hours", "years_of_experience",
 
     # High multicollinearity — redundant with interaction features or stronger siblings
+    # NOTE: engagement_score, motivation_level, resilience_score, energy_level,
+    #       job_satisfaction no longer exist in new dataset — kept here harmlessly
     "engagement_score", "motivation_level", "resilience_score",
     "job_satisfaction", "energy_level",
     "overall_suitability_score",
@@ -98,10 +100,16 @@ DROP_COLS = [
     "stakeholder_satisfaction_proj", "documentation_quality",
     "communication_frequency", "status",
     "n_primary_skills", "has_certifications",
+    # NOTE: columns below no longer exist in new dataset — kept here harmlessly
     "overall_burnout_risk", "emotional_exhaustion_score",
     "workload_pressure", "job_demands", "job_control",
     "late_hours_frequency", "weekend_work_frequency",
     "predicted_burnout_90days", "assignment_date",
+    # NOTE: strategic_importance, documentation_quality, meeting_hours_per_week
+    #       no longer exist in new dataset — kept here harmlessly
+    "strategic_importance",
+    # work_life_balance_score no longer exists in new dataset
+    "work_life_balance_score",
 
     # Dropped target
     "priority_score",
@@ -146,28 +154,56 @@ def clean_tasks(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     for col in ["start_date", "due_date"]:
-        df[col] = pd.to_datetime(df[col], errors="coerce")
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    df["planned_duration_days"] = (
-        (df["due_date"] - df["start_date"]).dt.days.clip(lower=0).fillna(0)
-    )
-    df["hours_ratio"] = (
-        df["actual_hours"] / df["estimated_hours"].replace(0, np.nan)
-    ).fillna(1.0).clip(0, 5)
+    if "start_date" in df.columns and "due_date" in df.columns:
+        df["planned_duration_days"] = (
+            (df["due_date"] - df["start_date"]).dt.days.clip(lower=0).fillna(0)
+        )
+    else:
+        df["planned_duration_days"] = 0
 
-    df["n_dependencies"] = (
-        df["dependent_task_ids"].fillna("").str.split(",")
-        .apply(lambda x: len([v for v in x if v.strip()]))
-    )
-    df["n_required_skills"] = (
-        df["required_skills"].fillna("").str.split(",")
-        .apply(lambda x: len([v for v in x if v.strip()]))
-    )
-    df["has_cert_req"] = df["required_certifications"].notna().astype(int)
+    # hours_ratio — guarded (actual_hours may be missing as post-assignment leakage)
+    if "actual_hours" in df.columns and "estimated_hours" in df.columns:
+        df["hours_ratio"] = (
+            df["actual_hours"] / df["estimated_hours"].replace(0, np.nan)
+        ).fillna(1.0).clip(0, 5)
+    else:
+        df["hours_ratio"] = 1.0
 
-    df["delay_risk_score"] = df["delay_risk_score"].fillna(
-        df["is_overdue"].astype(float) * 50
-    )
+    # n_dependencies — guarded
+    if "dependent_task_ids" in df.columns:
+        df["n_dependencies"] = (
+            df["dependent_task_ids"].fillna("").str.split(",")
+            .apply(lambda x: len([v for v in x if v.strip()]))
+        )
+    else:
+        df["n_dependencies"] = 0
+
+    # n_required_skills — guarded
+    if "required_skills" in df.columns:
+        df["n_required_skills"] = (
+            df["required_skills"].fillna("").str.split(",")
+            .apply(lambda x: len([v for v in x if v.strip()]))
+        )
+    else:
+        df["n_required_skills"] = 0
+
+    # FIX: has_cert_req — guarded (required_certifications missing in new dataset)
+    if "required_certifications" in df.columns:
+        df["has_cert_req"] = df["required_certifications"].notna().astype(int)
+    else:
+        df["has_cert_req"] = 0
+
+    # delay_risk_score — guarded
+    if "delay_risk_score" in df.columns:
+        if "is_overdue" in df.columns:
+            df["delay_risk_score"] = df["delay_risk_score"].fillna(
+                df["is_overdue"].astype(float) * 50
+            )
+        else:
+            df["delay_risk_score"] = df["delay_risk_score"].fillna(0)
 
     keep = [
         "task_id", "task_type", "priority", "complexity",
@@ -189,9 +225,12 @@ def clean_assignments(df: pd.DataFrame) -> pd.DataFrame:
     df["assignment_success"] = df["assignment_success"].map(
         {True: 1, False: 0, "True": 1, "False": 0}
     )
-    completed = df["completion_status"].str.lower() == "completed"
-    df.loc[df["assignment_success"].isna() &  completed, "assignment_success"] = 1
-    df.loc[df["assignment_success"].isna() & ~completed, "assignment_success"] = 0
+    if "completion_status" in df.columns:
+        completed = df["completion_status"].str.lower() == "completed"
+        df.loc[df["assignment_success"].isna() &  completed, "assignment_success"] = 1
+        df.loc[df["assignment_success"].isna() & ~completed, "assignment_success"] = 0
+    else:
+        df["assignment_success"] = df["assignment_success"].fillna(0)
 
     keep = [
         "assignment_id", "task_id", "employee_id", "project_id",
@@ -207,16 +246,22 @@ def clean_assignments(df: pd.DataFrame) -> pd.DataFrame:
 def clean_employees(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    df["n_primary_skills"] = (
-        df["primary_skills"].fillna("").str.split(",")
-        .apply(lambda x: len([v for v in x if v.strip()]))
-    )
+    # n_primary_skills — guarded
+    if "primary_skills" in df.columns:
+        df["n_primary_skills"] = (
+            df["primary_skills"].fillna("").str.split(",")
+            .apply(lambda x: len([v for v in x if v.strip()]))
+        )
+    else:
+        df["n_primary_skills"] = 0
 
     keep = [
         "employee_id",
         "technical_proficiency_score", "domain_expertise_score",
         "historical_performance_score", "average_task_completion_rate",
         "collaboration_score", "burnout_risk_score",
+        # FIX: work_life_balance_score removed — not in new dataset
+        # (kept in keep list safely via the `if c in df.columns` filter below)
         "work_life_balance_score", "recent_overtime_hours",
         "n_primary_skills",
     ]
@@ -229,13 +274,15 @@ def aggregate_burnout(df: pd.DataFrame) -> pd.DataFrame:
     df["assessment_date"] = pd.to_datetime(df["assessment_date"], errors="coerce")
     df = df.sort_values("assessment_date").groupby("employee_id").last().reset_index()
 
+    # FIX: trimmed to only columns present in new dataset
+    # Removed: workload_pressure, job_demands, energy_level,
+    #          engagement_score, motivation_level, resilience_score
     keep = [
         "employee_id",
         "overall_burnout_risk", "emotional_exhaustion_score",
-        "workload_pressure", "job_demands", "job_control",
+        "job_control",
         "late_hours_frequency", "weekend_work_frequency",
-        "energy_level", "job_satisfaction", "engagement_score",
-        "motivation_level", "resilience_score",
+        "job_satisfaction",
         "predicted_burnout_30days", "predicted_burnout_90days",
     ]
     return df[[c for c in keep if c in df.columns]]
@@ -245,38 +292,50 @@ def aggregate_reviews(df: pd.DataFrame) -> pd.DataFrame:
     """Average of latest 2 reviews per employee."""
     df = df.copy()
     df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce")
+
+    # FIX: build agg dict dynamically — only include columns that exist
+    # Removed: avg_reliability (reliability_score missing), utilization_rate (missing)
+    agg_dict = {}
+    col_map = {
+        "avg_perf_score":   "overall_performance_score",
+        "avg_quality":      "quality_of_work_score",
+        "avg_productivity": "productivity_score",
+        "avg_timeliness":   "time_management_score",
+        "avg_reliability":  "reliability_score",
+        "on_time_rate":     "on_time_delivery_rate",
+        "utilization_rate": "utilization_rate",
+    }
+    available = set(df.columns)
+    for out_col, src_col in col_map.items():
+        if src_col in available:
+            agg_dict[out_col] = (src_col, "mean")
+
     return (
         df.sort_values("review_date", ascending=False)
           .groupby("employee_id").head(2)
           .groupby("employee_id")
-          .agg(
-              avg_perf_score   =("overall_performance_score", "mean"),
-              avg_quality      =("quality_of_work_score", "mean"),
-              avg_productivity =("productivity_score", "mean"),
-              avg_timeliness   =("time_management_score", "mean"),
-              avg_reliability  =("reliability_score", "mean"),
-              on_time_rate     =("on_time_delivery_rate", "mean"),
-              utilization_rate =("utilization_rate", "mean"),
-          )
+          .agg(**agg_dict)
           .reset_index()
     )
 
 
 def aggregate_schedules(df: pd.DataFrame) -> pd.DataFrame:
     """Schedule load metrics per employee."""
-    return (
-        df.groupby("employee_id")
-          .agg(
-              total_scheduled_hours   =("duration_minutes", lambda x: x.sum() / 60),
-              schedule_conflict_rate  =("has_conflict", "mean"),
-              avg_productivity_during =("productivity_during", "mean"),
-              n_schedule_events       =("schedule_id", "count"),
-          )
-          .reset_index()
-    )
+    # FIX: has_conflict missing in new dataset — build agg dict dynamically
+    agg_dict = {
+        "total_scheduled_hours":   ("duration_minutes", lambda x: x.sum() / 60),
+        "avg_productivity_during": ("productivity_during", "mean"),
+        "n_schedule_events":       ("schedule_id", "count"),
+    }
+    if "has_conflict" in df.columns:
+        agg_dict["schedule_conflict_rate"] = ("has_conflict", "mean")
+
+    return df.groupby("employee_id").agg(**agg_dict).reset_index()
 
 
 def clean_projects(df: pd.DataFrame) -> pd.DataFrame:
+    # FIX: strategic_importance, documentation_quality, meeting_hours_per_week
+    #      removed — not in new dataset (safe via `if c in df.columns` filter)
     keep = [
         "project_id",
         "success_probability", "delay_risk_score",
@@ -404,21 +463,23 @@ def engineer_interactions(df: pd.DataFrame) -> pd.DataFrame:
         df.get("n_required_skills", 0) - df.get("n_primary_skills", 0)
     ).clip(lower=0)
 
+    # FIX: team_compatibility_score may not exist — default to 50 safely
     df["emp_fitness"] = (
-        df.get("skill_match_score", 50)            * 0.30 +
-        df.get("experience_match_score", 50)       * 0.25 +
-        df.get("availability_match_score", 50)     * 0.20 +
-        df.get("workload_compatibility_score", 50) * 0.15 +
-        df.get("team_compatibility_score", 50)     * 0.10
+        df.get("skill_match_score",            pd.Series(50, index=df.index)) * 0.30 +
+        df.get("experience_match_score",       pd.Series(50, index=df.index)) * 0.25 +
+        df.get("availability_match_score",     pd.Series(50, index=df.index)) * 0.20 +
+        df.get("workload_compatibility_score", pd.Series(50, index=df.index)) * 0.15 +
+        df.get("team_compatibility_score",     pd.Series(50, index=df.index)) * 0.10
     )
 
     buf = df.get("buffer_days", pd.Series(np.ones(len(df)), index=df.index)).replace(0, 1)
-    df["urgency_ratio"] = (df.get("days_overdue", 0) / buf).clip(-10, 10)
+    df["urgency_ratio"] = (df.get("days_overdue", pd.Series(0, index=df.index)) / buf).clip(-10, 10)
 
+    # FIX: overall_burnout_risk and predicted_burnout_30days may be absent
     df["health_risk"] = (
-        df.get("burnout_risk_score", 0)   * 0.5 +
-        df.get("overall_burnout_risk", 0) * 0.3 +
-        df.get("predicted_burnout_30days", 0) * 0.2
+        df.get("burnout_risk_score",       pd.Series(0, index=df.index)) * 0.5 +
+        df.get("overall_burnout_risk",     pd.Series(0, index=df.index)) * 0.3 +
+        df.get("predicted_burnout_30days", pd.Series(0, index=df.index)) * 0.2
     )
 
     df["schedule_load_ratio"] = pd.Series(0.0, index=df.index)

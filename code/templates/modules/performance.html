@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Performance Evaluation{% endblock %}
+{% block page_title %}Performance Evaluation{% endblock %}
+
+{% block content %}
+
+<!-- Employee Selector -->
+<div class="card" id="selector-card">
+  <div class="card-header">
+    <h2>Select Employee</h2>
+    <input type="text" id="emp-search" placeholder="Search by ID, department or role…" class="search-input"/>
+  </div>
+
+  <div class="employee-table-wrap">
+    <table class="employee-table" id="emp-table">
+      <thead>
+        <tr>
+          <th>Employee ID</th>
+          <th>Department</th>
+          <th>Role</th>
+          <th>Seniority</th>
+          <th>Latest Score</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in employees %}
+        <tr class="emp-row"
+            data-id="{{ emp.employee_id }}"
+            data-dept="{{ emp.department | lower }}"
+            data-role="{{ emp.role | lower }}">
+          <td class="emp-name">{{ emp.employee_id }}</td>
+          <td>{{ emp.department }}</td>
+          <td>{{ emp.role }}</td>
+          <td><span class="seniority-badge">{{ emp.seniority }}</span></td>
+          <td>
+            <span class="score-pill {% if emp.score >= 85 %}score-exc{% elif emp.score >= 70 %}score-good{% elif emp.score >= 55 %}score-avg{% else %}score-low{% endif %}">
+              {{ emp.score }}
+            </span>
+          </td>
+          <td>
+            <button class="btn-analyse" onclick="analyseEmployee('{{ emp.employee_id }}')">
+              Analyse
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Results Panel (hidden until analysis runs) -->
+<div id="results-panel" class="hidden">
+
+  <!-- Loading spinner -->
+  <div id="loading" class="loading-wrap hidden">
+    <div class="spinner"></div>
+    <p>Running analysis…</p>
+  </div>
+
+  <!-- Result content -->
+  <div id="result-content" class="hidden">
+
+    <!-- Employee header -->
+    <div class="card result-header">
+      <div class="emp-avatar" id="res-avatar"></div>
+      <div class="emp-meta">
+        <h2 id="res-name"></h2>
+        <p id="res-meta"></p>
+      </div>
+      <div class="score-hero">
+        <div class="score-circle" id="res-score-circle">
+          <span id="res-score-val"></span>
+          <small>/100</small>
+        </div>
+        <p id="res-rating-label"></p>
+      </div>
+    </div>
+
+    <!-- Two column layout -->
+    <div class="result-grid">
+
+      <!-- Left: Cluster breakdown -->
+      <div class="card">
+        <h3 class="card-title">Score Breakdown</h3>
+        <div class="cluster-list" id="cluster-list"></div>
+
+        <h3 class="card-title" style="margin-top:1.5rem;">Sub-scores (out of 10)</h3>
+        <div class="subscore-grid" id="subscore-grid"></div>
+      </div>
+
+      <!-- Right: Key metrics + extras -->
+      <div>
+        <!-- <div class="card">
+          <h3 class="card-title">Key Metrics</h3>
+          <div class="metric-list" id="metric-list"></div>
+        </div> -->
+
+        <div class="card" style="margin-top:1rem;">
+          <h3 class="card-title">Review History</h3>
+          <div class="review-list" id="review-list"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Back button -->
+    <button class="btn-secondary" onclick="resetView()" style="margin-top:1rem;">
+      ← Back to employee list
+    </button>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Search filter ────────────────────────────────────────────────────────
+document.getElementById("emp-search").addEventListener("input", function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll(".emp-row").forEach(row => {
+    const match = row.dataset.id.includes(q) ||
+                  row.dataset.dept.includes(q) ||
+                  row.dataset.role.includes(q);
+    row.style.display = match ? "" : "none";
+  });
+});
+
+// ── Analyse employee ─────────────────────────────────────────────────────
+function analyseEmployee(employeeId, reviewId = null) {
+  document.getElementById("selector-card").classList.add("hidden");
+  document.getElementById("results-panel").classList.remove("hidden");
+  document.getElementById("loading").classList.remove("hidden");
+  document.getElementById("result-content").classList.add("hidden");
+
+  fetch("/performance/api/analyse", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({employee_id: employeeId, review_id: reviewId})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) { alert(data.error); resetView(); return; }
+    renderResult(data);
+  })
+  .catch(() => { alert("Server error. Is Flask running?"); resetView(); });
+}
+
+// ── Render result ────────────────────────────────────────────────────────
+function renderResult(d) {
+  const emp = d.employee;
+
+  // Avatar initials - use employee ID instead of name
+  document.getElementById("res-avatar").textContent = emp.employee_id.slice(-3);
+
+  document.getElementById("res-name").textContent = emp.employee_id;
+  document.getElementById("res-meta").textContent =
+    `${emp.role}  ·  ${emp.department}  ·  ${emp.seniority}  ·  ${emp.review_type || "Review"}  on  ${emp.review_date}`;
+
+  // Score circle
+  const circle = document.getElementById("res-score-circle");
+  circle.style.borderColor = d.rating_color;
+  document.getElementById("res-score-val").textContent = d.predicted_score;
+
+  // Rating label
+  const label = document.getElementById("res-rating-label");
+  label.textContent = d.rating_label;
+  label.style.color = d.rating_color;
+
+  // Cluster breakdown
+  const clusters = [
+    {name: "Technical",    val: d.breakdown.technical,    weight: "30%", color: "#1d4ed8"},
+    {name: "Behavioral",   val: d.breakdown.behavioral,   weight: "25%", color: "#0891b2"},
+    {name: "Quality",      val: d.breakdown.quality,      weight: "20%", color: "#059669"},
+    {name: "Productivity", val: d.breakdown.productivity, weight: "25%", color: "#d97706"},
+  ];
+  document.getElementById("cluster-list").innerHTML = clusters.map(c => `
+    <div class="cluster-row">
+      <span class="cluster-name">${c.name} <small>(${c.weight})</small></span>
+      <div class="bar-wrap">
+        <div class="bar" style="width:${Math.min(c.val,100)}%;background:${c.color}"></div>
+      </div>
+      <span class="cluster-val">${c.val}</span>
+    </div>
+  `).join("");
+
+  // Sub-scores
+  const ss = d.sub_scores;
+  const subNames = {
+    technical_competence: "Technical Competence",
+    domain_knowledge:     "Domain Knowledge",
+    problem_solving:      "Problem Solving",
+    quality_of_work:      "Quality of Work",
+    productivity:         "Productivity",
+    communication:        "Communication",
+    collaboration:        "Collaboration",
+    leadership:           "Leadership",
+    initiative:           "Initiative",
+    time_management:      "Time Management",
+  };
+  document.getElementById("subscore-grid").innerHTML = Object.entries(subNames).map(([k, label]) => `
+    <div class="subscore-item">
+      <span class="subscore-label">${label}</span>
+      <div class="subscore-bar-wrap">
+        <div class="subscore-bar" style="width:${ss[k]*10}%"></div>
+      </div>
+      <span class="subscore-val">${ss[k]}/10</span>
+    </div>
+  `).join("");
+
+  // Key metrics
+  // const ex = d.extras;
+  // const metrics = [
+  //   {label: "On-time Delivery",      val: ex.on_time_delivery + "%"},
+  //   {label: "Task Completion Rate",  val: ex.task_completion + "%"},
+  //   {label: "Historical Score",      val: d.historical_score},
+  //   {label: "Formula Score",         val: d.formula_score},
+  //   {label: "Burnout Risk",          val: ex.burnout_risk},
+  //   {label: "Promotion Recommended", val: ex.promotion_recommended ? "Yes" : "No"},
+  // ];
+  // document.getElementById("metric-list").innerHTML = metrics.map(m => `
+  //   <div class="metric-row">
+  //     <span class="metric-label">${m.label}</span>
+  //     <span class="metric-val">${m.val}</span>
+  //   </div>
+  // `).join("");
+
+  // Review history
+  document.getElementById("review-list").innerHTML = d.all_reviews.map(r => `
+    <div class="review-row" onclick="analyseEmployee('${emp.employee_id}', '${r.review_id}')">
+      <div>
+        <span class="review-type">${r.review_type}</span>
+        <span class="review-date">${r.review_date}</span>
+      </div>
+      <span class="score-pill ${r.overall_score >= 85 ? 'score-exc' : r.overall_score >= 70 ? 'score-good' : r.overall_score >= 55 ? 'score-avg' : 'score-low'}">
+        ${r.overall_score}
+      </span>
+    </div>
+  `).join("");
+
+  document.getElementById("loading").classList.add("hidden");
+  document.getElementById("result-content").classList.remove("hidden");
+}
+
+// ── Reset to employee list ────────────────────────────────────────────────
+function resetView() {
+  document.getElementById("results-panel").classList.add("hidden");
+  document.getElementById("selector-card").classList.remove("hidden");
+}
+</script>
+{% endblock %}
