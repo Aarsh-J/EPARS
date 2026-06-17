@@ -3,6 +3,9 @@
 # Input: employee_id
 # Reads RAW files from dataset folder
 # Output: json file of
+#-----------------------------------------------------------------
+# IMPORTANT NOTE: 
+# In terminal run as: python Model2_Performance/pem_predict.py
 # # ===============================================================
 
 import os
@@ -19,8 +22,8 @@ warnings.filterwarnings("ignore")
 # ===============================================================
 
 DATA_DIR = "../dataset"
-MODEL_FILE = "ridge_model.pkl"
-SCALER_FILE = "scaler.pkl"
+MODEL_FILE = "Model2_Performance/ridge_model.pkl"
+SCALER_FILE = "Model2_Performance/scaler.pkl"
 
 # ===============================================================
 # LOAD MODEL
