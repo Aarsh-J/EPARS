@@ -27,8 +27,8 @@ TEST_PROJECT_ID  = "PRJ005"    # any project ID
 
 TESTS = [
     {
-            "name": "Task Assignment",
-            "query": f"Assign task {TEST_TASK_ID} to the best available employee",
+        "name": "Task Assignment",
+        "query": f"Assign task {TEST_TASK_ID} to the best available employee",
     },
     {
         "name": "Burnout Check",
