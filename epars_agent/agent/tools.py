@@ -339,6 +339,11 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
         SET current_project_count = current_project_count + 1
         WHERE employee_id = %s
     """
+    supersede_sql = """
+        UPDATE task_assignments
+        SET completion_status = 'Reassigned'
+        WHERE task_id = %s AND completion_status NOT IN ('Completed', 'Cancelled', 'Reassigned')
+    """
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -346,6 +351,7 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
                 max_row = cur.fetchone()
                 next_num = (max_row["max_num"] if max_row else 0) + 1
                 new_id = f"ASG{next_num:04d}"
+                cur.execute(supersede_sql, (task_id,))
 
                 cur.execute(insert_sql, (new_id, task_id, employee_id, assignment_method, skill_match_score, task_id))
                 row = cur.fetchone()

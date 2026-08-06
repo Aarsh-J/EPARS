@@ -1,26 +1,87 @@
-# Employee Performance Analyzer and Recommendation System (EPARS)
+# ePARS Agentic AI — Tool Functions & Burnout Monitoring
 
-To copy repo use this command: `git clone https://github.com/Aarsh-J/EPARS.git`
+## Folder Structure
+```
+epars_agent/
+├── .env.example              ← copy to .env and fill credentials
+├── requirements.txt
+├── setup_database.py         ← creates all 10 tables + loads CSVs
+├── test_agent.py             ← 4 standard agent tests
+├── burnout_monitor.py        ← Step 6: burnout detection + LLM-reasoned rebalancing
+├── agent/
+│   ├── db.py                 ← PostgreSQL connection (single source of truth)
+│   ├── tools.py               ← 10 tool functions + LangChain wrappers
+│   ├── calendar_client.py     ← Google Calendar API wrapper (create/update/delete/list events)
+│   ├── epars_agent.py         ← LangGraph ReAct agent
+│   └── sa_key.json            ← Google service account key (gitignored — not committed)
+└── dataset/                  ← all 10 CSV files
+```
 
-### Branch rules
-- **develop** : Current working branch with our changes being pushed to it
-- **prod** : Final Branch, develop will be merged when a feature is complete and tested
-- **preprocessor** : Branch containing our Dataset generation code and our ML Model code (we will copy the complete ML model to main branches, tweeking will be done here)
+## Setup
 
-#### Try using proper branch naming conventions and commit messages for clearity 
+### 1. Install dependencies
+```bash
+pip install -r requirements.txt
+```
 
-### Git Commands
-- `git branch` : List out existing branches
-- `git branch <branch_name>` : Create ew branch from your current branch (but you dont move to the created branch)
-- `git branch -d <name>` : delete branch
-- `git branch -m <old-name> <new-name>` : rename branch
-  
-- `git checkout <branch_name>` : move to existing branch
-- `git checkout -b <branch_name>` : create new branch (from your current branch) and open that 
-- `git checkout --orphan <branch_name>` : create new branch with no parent
+### 2. Configure your database
+```bash
+cp .env.example .env
+# Edit .env with your PostgreSQL credentials and GROQ_API_KEY
+```
 
-- `git pull <branch-name>` : pull branch to yor current (existing in your device/local)
-- `git pull origin <branch-name>` : pull branch from git to yor current
+### 3. Set up Google Calendar integration
+See the team setup instructions doc for full steps (Google Cloud service account, calendar sharing, `sa_key.json`). Once done, `agent/calendar_client.py` needs your real `CALENDAR_ID` filled in.
 
-- `git commit -m "[message]"` : commit
-- `git push origin <branch-nae>` : pushes/merges your branch to specified one in git
+### 4. Test your DB connection
+```bash
+cd agent
+python db.py
+# Should print: [OK] Connected to PostgreSQL: ...
+```
+
+### 5. Test all tool functions
+```bash
+cd agent
+python tools.py EMP001 TSK0001
+# Replace EMP001 and TSK0001 with real IDs from your database
+```
+
+---
+
+## The 10 Tools
+
+| # | Function | What it does | DB Tables |
+|---|---|---|---|
+| 1 | `get_employee_profile` | Full profile: skills, role, availability | employees |
+| 2 | `get_employee_ml_scores` | Latest PEM + burnout scores | performance_reviews, burnout_indicators |
+| 3 | `get_employee_workload` | Active tasks + hours + capacity | task_assignments, tasks, workload_history |
+| 4 | `get_task_details` | Task requirements, deadline, priority | tasks |
+| 5 | `find_available_employees` | Candidate employees by skill | employees |
+| 6 | `assign_task` | **WRITES** assignment to DB (auto-generates `assignment_id`, supersedes prior active assignment for the task) | task_assignments, tasks, employees |
+| 7 | `flag_burnout_alert` | **WRITES** burnout flag to DB | burnout_indicators, employees |
+| 8 | `create_calendar_event` | **WRITES** a Google Calendar event for a task assignment, links `google_event_id` back to DB | task_assignments, Google Calendar |
+| 9 | `reschedule_calendar_event` | **WRITES** — moves an existing calendar event to a new time | task_assignments, Google Calendar |
+| 10 | `cancel_calendar_event` | **WRITES** — deletes a calendar event and clears `google_event_id` | task_assignments, Google Calendar |
+
+Tools 1–5 are **read-only**. Tools 6–10 **write to the database and/or Google Calendar**.
+
+---
+
+## Burnout Monitoring Loop (`burnout_monitor.py`)
+
+Standalone script — run manually or on a schedule (not agent-invoked):
+
+```bash
+python burnout_monitor.py
+```
+
+For every employee whose latest WBP burnout score is **≥ 0.70**, it:
+1. Pulls their active (incomplete) tasks
+2. Asks the LLM (Groq, `llama-3.3-70b-versatile`) to decide: **reschedule**, **reassign**, or **no action** — with reasoning, given the employee's burnout context, the task, and candidate employees for reassignment
+3. Executes the decision via Tools 6, 8, 9, 10 above
+4. Avoids double-booking by checking the target employee's real calendar availability before picking a new slot (`find_next_free_slot`)
+5. Logs the intervention via `flag_burnout_alert`
+
+---
+
