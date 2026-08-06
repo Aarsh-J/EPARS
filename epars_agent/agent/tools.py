@@ -1,28 +1,14 @@
 """
-ePARS — Agent Tool Functions (Step 2)
 =======================================
-These are the "hands" of the Agentic AI.
-Each function queries your PostgreSQL tables and returns
-a clean Python dict that the LLM agent can reason over.
-
-All tools are also wrapped as LangChain Tool objects at
-the bottom of this file, ready to plug into your agent.
-
-Tables used (from your schema):
-  - employees
-  - tasks
-  - task_assignments
-  - workload_history
-  - burnout_indicators
-  - performance_reviews
-  - team_formations
+Each function queries your PostgreSQL tables and returns a clean Python dict that the LLM agent can reason over.
+All tools are also wrapped as LangChain Tool objects at the bottom of this file, ready to plug into the agent.
+Tables used: employees, tasks, task_assignments, workload_history, burnout_indicators, performance_reviews, team_formations
 """
-
 import json
 from datetime import date, datetime
 from decimal import Decimal
 from db import get_connection
-
+from calendar_client import create_event, update_event, delete_event
 # ── Utility ────────────────────────────────────────────────────────────────────
 
 def _serialize(obj):
@@ -41,7 +27,6 @@ def _to_list(rows):
     """Convert a list of RealDictRows to plain dicts."""
     return [dict(r) for r in rows] if rows else []
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 1 — get_employee_profile
 # Purpose : Fetch everything the agent needs to know about one employee.
@@ -49,36 +34,6 @@ def _to_list(rows):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_employee_profile(employee_id: str) -> dict:
-    """
-    Returns the full profile of a single employee including their skills,
-    availability, performance history, and well-being indicators.
-
-    Args:
-        employee_id: e.g. "EMP001"
-
-    Returns:
-        Dict with all key employee fields, or {"error": "..."} on failure.
-
-    Example return:
-        {
-          "employee_id": "EMP042",
-          "full_name": "Priya Sharma",
-          "department": "Engineering",
-          "role": "Software Engineer",
-          "seniority_level": "Mid",
-          "primary_skills": "Python, Django, REST APIs",
-          "secondary_skills": "Docker, PostgreSQL",
-          "weekly_capacity_hours": 40,
-          "is_available": true,
-          "current_project_count": 2,
-          "burnout_risk_score": 38.5,
-          "stress_level": "Low",
-          "historical_performance_score": 74.2,
-          "average_task_completion_rate": 0.88,
-          "collaboration_score": 7.2,
-          "leadership_potential": 6.5
-        }
-    """
     sql = """
         SELECT
             employee_id,
@@ -116,7 +71,6 @@ def get_employee_profile(employee_id: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 2 — get_employee_ml_scores
 # Purpose : Fetch the latest ML model outputs for an employee.
@@ -126,26 +80,6 @@ def get_employee_profile(employee_id: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_employee_ml_scores(employee_id: str) -> dict:
-    """
-    Returns the latest PEM (performance) score and WBP (burnout) score
-    for a given employee, along with their risk category and trend.
-
-    Args:
-        employee_id: e.g. "EMP001"
-
-    Returns:
-        {
-          "employee_id": "EMP042",
-          "pem_score": 74.5,
-          "performance_rating": "Good",
-          "pem_review_date": "2025-10-01",
-          "burnout_score": 0.42,
-          "burnout_category": "Moderate",
-          "burnout_trend": "Worsening",
-          "intervention_urgency": "Medium",
-          "predicted_burnout_30days": 0.55
-        }
-    """
     pem_sql = """
         SELECT
             overall_performance_score       AS pem_score,
@@ -159,7 +93,6 @@ def get_employee_ml_scores(employee_id: str) -> dict:
         ORDER BY review_date DESC
         LIMIT 1
     """
-
     burnout_sql = """
         SELECT
             overall_burnout_risk / 100.0    AS burnout_score,
@@ -177,19 +110,15 @@ def get_employee_ml_scores(employee_id: str) -> dict:
         ORDER BY assessment_date DESC
         LIMIT 1
     """
-
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(pem_sql, (employee_id,))
                 pem = _to_dict(cur.fetchone())
-
                 cur.execute(burnout_sql, (employee_id,))
                 burnout = _to_dict(cur.fetchone())
-
         if not pem and not burnout:
             return {"error": f"No ML scores found for employee '{employee_id}'."}
-
         return {
             "employee_id": employee_id,
             **pem,
@@ -197,7 +126,6 @@ def get_employee_ml_scores(employee_id: str) -> dict:
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 3 — get_employee_workload
@@ -207,25 +135,6 @@ def get_employee_ml_scores(employee_id: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_employee_workload(employee_id: str) -> dict:
-    """
-    Returns the current active task count, estimated active hours,
-    and the last 7 days of workload history for an employee.
-
-    Args:
-        employee_id: e.g. "EMP001"
-
-    Returns:
-        {
-          "employee_id": "EMP042",
-          "active_task_count": 3,
-          "total_estimated_hours_remaining": 28.5,
-          "weekly_capacity_hours": 40,
-          "capacity_used_percent": 71.25,
-          "recent_avg_hours_per_day": 8.4,
-          "recent_avg_overtime_hours": 1.2,
-          "recent_avg_stress_level": "Medium"
-        }
-    """
     active_tasks_sql = """
         SELECT
             COUNT(*)                                AS active_task_count,
@@ -237,7 +146,6 @@ def get_employee_workload(employee_id: str) -> dict:
           AND t.status NOT IN ('Completed', 'Cancelled')
           AND ta.completion_status NOT IN ('Completed', 'Cancelled')
     """
-
     workload_history_sql = """
         SELECT
             AVG(total_hours_worked)         AS avg_hours_per_day,
@@ -249,30 +157,24 @@ def get_employee_workload(employee_id: str) -> dict:
         WHERE employee_id = %s
           AND date >= CURRENT_DATE - INTERVAL '7 days'
     """
-
     capacity_sql = """
         SELECT weekly_capacity_hours
         FROM employees
         WHERE employee_id = %s
     """
-
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(active_tasks_sql, (employee_id,))
                 tasks = _to_dict(cur.fetchone())
-
                 cur.execute(workload_history_sql, (employee_id,))
                 history = _to_dict(cur.fetchone())
-
                 cur.execute(capacity_sql, (employee_id,))
                 capacity_row = cur.fetchone()
                 weekly_capacity = float(capacity_row["weekly_capacity_hours"]) if capacity_row else 40.0
-
         active_task_count = int(tasks.get("active_task_count") or 0)
         hours_remaining   = float(tasks.get("total_estimated_hours_remaining") or 0)
         capacity_used_pct = round((hours_remaining / weekly_capacity) * 100, 1) if weekly_capacity else 0
-
         return {
             "employee_id": employee_id,
             "active_task_count": active_task_count,
@@ -287,7 +189,6 @@ def get_employee_workload(employee_id: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 4 — get_task_details
 # Purpose : What does this task need? Skills, priority, deadline, hours.
@@ -295,30 +196,6 @@ def get_employee_workload(employee_id: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_task_details(task_id: str) -> dict:
-    """
-    Returns full details of a task — its required skills, priority,
-    deadline, estimated effort, and current assignment status.
-
-    Args:
-        task_id: e.g. "TASK0042"
-
-    Returns:
-        {
-          "task_id": "TASK0042",
-          "project_id": "PROJ010",
-          "task_type": "Development",
-          "priority": "High",
-          "complexity": "Medium",
-          "required_skills": "Python, REST APIs",
-          "required_role": "Software Engineer",
-          "required_seniority": "Mid",
-          "estimated_hours": 16.0,
-          "due_date": "2025-11-15",
-          "status": "Not Started",
-          "assigned_to": null,
-          "is_overdue": false
-        }
-    """
     sql = """
         SELECT
             task_id,
@@ -354,28 +231,13 @@ def get_task_details(task_id: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 5 — find_available_employees
 # Purpose : Find candidate employees for a task based on skill and availability.
 # Used by : Task assignment agent and team formation agent.
 # ══════════════════════════════════════════════════════════════════════════════
 
-def find_available_employees(required_skills: str, required_role: str = "",
-                              required_seniority: str = "", limit: int = 5) -> list:
-    """
-    Finds employees who are available and have matching skills,
-    ranked by performance score descending.
-
-    Args:
-        required_skills  : Comma-separated skill string e.g. "Python, Django"
-        required_role    : Optional role filter e.g. "Software Engineer"
-        required_seniority: Optional seniority filter e.g. "Senior"
-        limit            : Max number of candidates to return (default 5)
-
-    Returns:
-        List of candidate dicts with key scores for the agent to evaluate.
-    """
+def find_available_employees(required_skills: str, required_role: str = "", required_seniority: str = "", limit: int = 5) -> list:
     # Build dynamic WHERE clauses for each skill keyword
     skill_list = [s.strip() for s in required_skills.split(",") if s.strip()]
 
@@ -387,10 +249,8 @@ def find_available_employees(required_skills: str, required_role: str = "",
     skill_params = []
     for skill in skill_list:
         skill_params.extend([f"%{skill}%", f"%{skill}%"])
-
     role_clause     = "AND role ILIKE %s"         if required_role      else ""
     seniority_clause= "AND seniority_level = %s"  if required_seniority else ""
-
     sql = f"""
         SELECT
             e.employee_id,
@@ -416,14 +276,12 @@ def find_available_employees(required_skills: str, required_role: str = "",
         ORDER BY e.historical_performance_score DESC
         LIMIT %s
     """
-
     params = skill_params
     if required_role:
         params.append(f"%{required_role}%")
     if required_seniority:
         params.append(required_seniority)
     params.append(limit)
-
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -435,31 +293,20 @@ def find_available_employees(required_skills: str, required_role: str = "",
     except Exception as e:
         return [{"error": str(e)}]
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 6 — assign_task
 # Purpose : Write a new task assignment record to the database.
 # Used by : Task assignment agent (the actual write action).
 # ══════════════════════════════════════════════════════════════════════════════
-
-def assign_task(task_id: str, employee_id: str,
-                assignment_method: str = "agentic_ai",
-                skill_match_score: float = 0.0) -> dict:
-    """
-    Creates a task assignment record and updates the task's assigned_to field.
-
-    Args:
-        task_id           : e.g. "TASK0042"
-        employee_id       : e.g. "EMP042"
-        assignment_method : How the assignment was made (default: "agentic_ai")
-        skill_match_score : 0–100 score of how well skills match (default 0)
-
-    Returns:
-        {"success": True, "assignment_id": "...", "message": "..."}
-        or {"success": False, "error": "..."}
+def assign_task(task_id: str, employee_id: str, assignment_method: str = "agentic_ai", skill_match_score: float = 0.0) -> dict:
+    next_id_sql = """
+        SELECT COALESCE(MAX(CAST(SUBSTRING(assignment_id FROM 4) AS INTEGER)), 0) AS max_num
+        FROM task_assignments
+        WHERE assignment_id ~ '^ASG[0-9]+$'
     """
     insert_sql = """
         INSERT INTO task_assignments (
+            assignment_id,
             task_id,
             employee_id,
             project_id,
@@ -471,6 +318,7 @@ def assign_task(task_id: str, employee_id: str,
         SELECT
             %s,
             %s,
+            %s,
             t.project_id,
             CURRENT_DATE,
             %s,
@@ -480,38 +328,32 @@ def assign_task(task_id: str, employee_id: str,
         WHERE t.task_id = %s
         RETURNING assignment_id
     """
-
     update_task_sql = """
         UPDATE tasks
         SET assigned_to = %s,
             status = CASE WHEN status = 'Not Started' THEN 'In Progress' ELSE status END
         WHERE task_id = %s
     """
-
     update_employee_sql = """
         UPDATE employees
         SET current_project_count = current_project_count + 1
         WHERE employee_id = %s
     """
-
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                # Insert assignment record
-                cur.execute(insert_sql, (
-                    task_id, employee_id, assignment_method, skill_match_score, task_id
-                ))
+                cur.execute(next_id_sql)
+                max_row = cur.fetchone()
+                next_num = (max_row["max_num"] if max_row else 0) + 1
+                new_id = f"ASG{next_num:04d}"
+
+                cur.execute(insert_sql, (new_id, task_id, employee_id, assignment_method, skill_match_score, task_id))
                 row = cur.fetchone()
                 assignment_id = row["assignment_id"] if row else None
 
-                # Update task status
                 cur.execute(update_task_sql, (employee_id, task_id))
-
-                # Update employee project count
                 cur.execute(update_employee_sql, (employee_id,))
-
             conn.commit()
-
         return {
             "success": True,
             "assignment_id": str(assignment_id),
@@ -521,29 +363,13 @@ def assign_task(task_id: str, employee_id: str,
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 7 — flag_burnout_alert
 # Purpose : Log a burnout intervention flag for a high-risk employee.
 # Used by : Burnout intervention agent.
 # ══════════════════════════════════════════════════════════════════════════════
-
 def flag_burnout_alert(employee_id: str, burnout_score: float,
                         urgency: str, recommended_action: str) -> dict:
-    """
-    Logs a burnout intervention alert in the burnout_indicators table
-    and reduces the employee's is_available flag if urgency is High.
-
-    Args:
-        employee_id        : e.g. "EMP042"
-        burnout_score      : current WBP score (0.0–1.0)
-        urgency            : "Low", "Medium", "High", "Critical"
-        recommended_action : Free-text recommendation from the agent
-
-    Returns:
-        {"success": True, "message": "..."} or {"success": False, "error": "..."}
-    """
     update_sql = """
         UPDATE burnout_indicators
         SET intervention_urgency    = %s,
@@ -553,7 +379,6 @@ def flag_burnout_alert(employee_id: str, burnout_score: float,
               SELECT MAX(assessment_date) FROM burnout_indicators WHERE employee_id = %s
           )
     """
-
     # If high urgency, temporarily mark as unavailable for new tasks
     availability_sql = """
         UPDATE employees
@@ -562,14 +387,12 @@ def flag_burnout_alert(employee_id: str, burnout_score: float,
         WHERE employee_id = %s
           AND %s >= 0.70
     """
-
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(update_sql, (urgency, employee_id, employee_id))
                 cur.execute(availability_sql, (employee_id, burnout_score))
             conn.commit()
-
         msg = (
             f"Burnout alert logged for {employee_id}. "
             f"Score: {burnout_score:.2f}, Urgency: {urgency}. "
@@ -579,18 +402,145 @@ def flag_burnout_alert(employee_id: str, burnout_score: float,
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 8 — create_calendar_event
+# Purpose : Creates a Google Calendar event for a task assignment and
+#           stores the returned google_event_id on the task_assignments row.
+# Used by : Task assignment agent / burnout monitoring loop (Step 6).
+# ══════════════════════════════════════════════════════════════════════════════
+def create_calendar_event(task_id: str, employee_id: str, start_time: str, end_time: str) -> dict:
+    # Pull task description for the event summary
+    task = get_task_details(task_id)
+    if "error" in task:
+        return {"success": False, "error": task["error"]}
+
+    summary = f"[{task_id}] {task.get('task_type', 'Task')} — {employee_id}"
+    description = task.get("description", "") or ""
+    cal_result = create_event(
+        summary=summary,
+        start_time=start_time,
+        end_time=end_time,
+        description=description,
+    )
+    if not cal_result.get("success"):
+        return {"success": False, "error": cal_result.get("error", "Calendar API call failed.")}
+    event_id = cal_result["event_id"]
+    update_sql = """
+        UPDATE task_assignments
+        SET google_event_id = %s
+        WHERE task_id = %s AND employee_id = %s
+          AND assignment_id = (
+              SELECT assignment_id FROM task_assignments
+              WHERE task_id = %s AND employee_id = %s
+              ORDER BY assignment_date DESC
+              LIMIT 1
+          )
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(update_sql, (event_id, task_id, employee_id, task_id, employee_id))
+                rows_updated = cur.rowcount
+            conn.commit()
+
+        if rows_updated == 0:
+            delete_event(event_id)
+            return {
+                "success": False,
+                "error": f"No task_assignments row found for {task_id}/{employee_id}. "
+                         f"Assign the task first via assign_task. Orphaned calendar event was auto-deleted."
+            }
+
+        return {
+            "success": True,
+            "event_id": event_id,
+            "message": f"Calendar event created for {task_id} ({employee_id}) and linked in DB."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Event created in Calendar (id={event_id}) but DB update failed: {e}"
+        }   
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 9 — reschedule_calendar_event
+# Purpose : Moves an existing task's calendar event to a new time.
+#           This is the core action for burnout-triggered rescheduling.
+# Used by : Burnout monitoring loop (Step 6).
+# ══════════════════════════════════════════════════════════════════════════════
+
+def reschedule_calendar_event(task_id: str, employee_id: str, new_start_time: str, new_end_time: str) -> dict:
+    lookup_sql = """
+        SELECT google_event_id FROM task_assignments
+        WHERE task_id = %s AND employee_id = %s
+        ORDER BY assignment_date DESC
+        LIMIT 1
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(lookup_sql, (task_id, employee_id))
+                row = cur.fetchone()
+        if not row or not row.get("google_event_id"):
+            return {"success": False, "error": f"No calendar event found for {task_id}/{employee_id}. Create one first."}
+        event_id = row["google_event_id"]
+        cal_result = update_event(event_id=event_id, start_time=new_start_time, end_time=new_end_time,)
+        if not cal_result.get("success"):
+            return {"success": False, "error": cal_result.get("error", "Calendar API update failed.")}
+        return {
+            "success": True,
+            "event_id": event_id,
+            "message": f"Rescheduled {task_id} ({employee_id}) to {new_start_time} - {new_end_time}."
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 10 — cancel_calendar_event
+# Purpose : Deletes the calendar event for a task, e.g. when reassigning the task to a different employee.
+# Used by : Burnout monitoring loop (Step 6) — pairs with create_calendar_event
+#           when reassigning: cancel old owner's event, create new owner's event.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def cancel_calendar_event(task_id: str, employee_id: str) -> dict:
+    lookup_sql = """
+        SELECT google_event_id FROM task_assignments
+        WHERE task_id = %s AND employee_id = %s
+        ORDER BY assignment_date DESC
+        LIMIT 1
+    """
+    clear_sql = """
+        UPDATE task_assignments
+        SET google_event_id = NULL
+        WHERE task_id = %s AND employee_id = %s
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(lookup_sql, (task_id, employee_id))
+                row = cur.fetchone()
+        if not row or not row.get("google_event_id"):
+            return {"success": False, "error": f"No calendar event found for {task_id}/{employee_id}."}
+        event_id = row["google_event_id"]
+        cal_result = delete_event(event_id)
+        if not cal_result.get("success"):
+            return {"success": False, "error": cal_result.get("error", "Calendar API delete failed.")}
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(clear_sql, (task_id, employee_id))
+            conn.commit()
+        return {"success": True, "message": f"Cancelled calendar event for {task_id} ({employee_id})."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LANGCHAIN TOOL WRAPPERS
-# Add these to your agent's `tools` list in Step 3.
 # ══════════════════════════════════════════════════════════════════════════════
-
 try:
     try:
         from langchain.tools import Tool
     except ImportError:
         from langchain_core.tools import Tool
-
     # Tool 1
     employee_profile_tool = Tool(
         name="get_employee_profile",
@@ -602,7 +552,6 @@ try:
             "making any recommendation about them."
         ),
     )
-
     # Tool 2
     ml_scores_tool = Tool(
         name="get_employee_ml_scores",
@@ -615,7 +564,6 @@ try:
             "or flag burnout."
         ),
     )
-
     # Tool 3
     workload_tool = Tool(
         name="get_employee_workload",
@@ -627,7 +575,6 @@ try:
             "employee has capacity."
         ),
     )
-
     # Tool 4
     task_details_tool = Tool(
         name="get_task_details",
@@ -639,7 +586,6 @@ try:
             "need to assign a task."
         ),
     )
-
     # Tool 5
     find_employees_tool = Tool(
         name="find_available_employees",
@@ -656,7 +602,6 @@ try:
             "performance score, with their burnout risk and availability status."
         ),
     )
-
     # Tool 6
     assign_task_tool = Tool(
         name="assign_task",
@@ -674,7 +619,6 @@ try:
             "Returns success status and the new assignment_id."
         ),
     )
-
     # Tool 7
     flag_burnout_tool = Tool(
         name="flag_burnout_alert",
@@ -692,7 +636,55 @@ try:
             "determines immediate intervention is required."
         ),
     )
-
+    # Tool 8
+    create_calendar_event_tool = Tool(
+        name="create_calendar_event",
+        func=lambda q: json.dumps(
+            create_calendar_event(
+                **{k: v for k, v in
+                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
+            ), default=_serialize
+        ),
+        description=(
+            "Creates a Google Calendar event for a task assignment. "
+            "Input format: 'task_id=TASK0042|employee_id=EMP042|"
+            "start_time=2026-08-10T10:00:00|end_time=2026-08-10T12:00:00' "
+            "Call this after assign_task to put the work on the employee's calendar."
+        ),
+    )
+    # Tool 9
+    reschedule_calendar_event_tool = Tool(
+        name="reschedule_calendar_event",
+        func=lambda q: json.dumps(
+            reschedule_calendar_event(
+                **{k: v for k, v in
+                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
+            ), default=_serialize
+        ),
+        description=(
+            "Reschedules an existing task's calendar event to a new time. "
+            "Input format: 'task_id=TASK0042|employee_id=EMP042|"
+            "new_start_time=2026-08-12T10:00:00|new_end_time=2026-08-12T12:00:00' "
+            "Use this when an employee's burnout score is high and their workload "
+            "needs to be spread out, rather than reassigned to someone else."
+        ),
+    )
+    # Tool 10
+    cancel_calendar_event_tool = Tool(
+        name="cancel_calendar_event",
+        func=lambda q: json.dumps(
+            cancel_calendar_event(
+                **{k: v for k, v in
+                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
+            ), default=_serialize
+        ),
+        description=(
+            "Cancels the calendar event for a task assignment. "
+            "Input format: 'task_id=TASK0042|employee_id=EMP042' "
+            "Call this when reassigning a task to a different employee — "
+            "cancel the old owner's event, then create_calendar_event for the new owner."
+        ),
+    )
     # Collect all tools for easy import in Step 3
     ALL_TOOLS = [
         employee_profile_tool,
@@ -702,9 +694,11 @@ try:
         find_employees_tool,
         assign_task_tool,
         flag_burnout_tool,
+        create_calendar_event_tool,
+        reschedule_calendar_event_tool,
+        cancel_calendar_event_tool,
     ]
-
-    print("[INFO] All 7 LangChain tools registered successfully.")
+    print("[INFO] All 10 LangChain tools registered successfully.")
 
 except ImportError:
     ALL_TOOLS = []
@@ -722,7 +716,7 @@ if __name__ == "__main__":
     print(f"\n{'='*50}")
     print(f"Testing tools with employee={test_employee}, task={test_task}")
     print('='*50)
-
+    
     print("\n[1] get_employee_profile")
     result = get_employee_profile(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
@@ -742,5 +736,17 @@ if __name__ == "__main__":
     print("\n[5] find_available_employees")
     result = find_available_employees("Python", limit=3)
     print(json.dumps(result, indent=2, default=_serialize))
-
+    
+    print("\n[6] create_calendar_event")
+    result = create_calendar_event(test_task, test_employee, "2026-08-10T10:00:00", "2026-08-10T12:00:00")
+    print(json.dumps(result, indent=2, default=_serialize))
+    
+    print("\n[7] reschedule_calendar_event")
+    result = reschedule_calendar_event(test_task, test_employee, "2026-08-12T10:00:00", "2026-08-12T12:00:00")
+    print(json.dumps(result, indent=2, default=_serialize))
+    
+    print("\n[8] cancel_calendar_event")
+    result = cancel_calendar_event(test_task, test_employee)
+    print(json.dumps(result, indent=2, default=_serialize))
+    
     print("\nAll tool tests complete.")

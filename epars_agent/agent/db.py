@@ -18,10 +18,10 @@ load_dotenv()  # reads .env file from project root
 
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "localhost"),
-    "port":     int(os.getenv("DB_PORT", "5432")),
+    "port":     int(os.getenv("DB_PORT", "5433")),
     "dbname":   os.getenv("DB_NAME",     "epars_db"),
     "user":     os.getenv("DB_USER",     "postgres"),
-    "password": os.getenv("DB_PASSWORD", ""),
+    "password": os.getenv("DB_PASSWORD", "root"),
 }
 
 
