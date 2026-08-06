@@ -25,3 +25,6 @@ ingestion_log.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# Google Cloud service account key
+epars_agent/agent/sa_key.json
