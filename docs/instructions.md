@@ -42,7 +42,16 @@ python epars_policies/rag_query.py        # runs sample policy queries
 cd epars_agent && python agent/tools.py EMP001 TSK0001   # use real IDs from your DB
 ```
 
-### 6. Run the agent
+### 6. Set up Google Calendar integration (needed for tools 8-10 + burnout_monitor.py)
+Full steps (service account, sharing the calendar, `CALENDAR_ID`) are in
+[`../epars_agent/README.md`](../epars_agent/README.md#3-set-up-google-calendar-integration).
+One-time DB migration this requires, run once against the shared Supabase DB:
+```sql
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS google_event_id TEXT;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS google_event_id TEXT;
+```
+
+### 7. Run the agent
 ```bash
 cd path/to/epars_agent
 python test_agent.py       # 4 standard test queries (needs GROQ_API_KEY)
@@ -51,17 +60,29 @@ python test_agent.py       # 4 standard test queries (needs GROQ_API_KEY)
 python agent/epars_agent.py
 ```
 
+### 8. Run the burnout monitor
+```bash
+cd path/to/epars_agent
+python burnout_monitor.py
+# For every employee with burnout score >= 0.70: LLM decides reschedule/reassign/no
+# action, and executes it via the calendar + assignment tools. See epars_agent/README.md
+# for details.
+```
+
 ### Folder Structure
 ```
 epars_agent/
 ├── .env.example        ← template only; the real .env lives in the project root
 ├── test_agent.py
 ├── setup_database.py
+├── burnout_monitor.py
 ├── requirements.txt
 ├── agent/
 │   ├── epars_agent.py
 │   ├── db.py
-│   └── tools.py
+│   ├── tools.py               ← 10 tools (7 + 3 Google Calendar)
+│   ├── calendar_client.py
+│   └── sa_key.json            ← gitignored, not committed
 └── (dataset/ lives at the project root, not here)
 
 epars_policies/

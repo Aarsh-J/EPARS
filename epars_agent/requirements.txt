@@ -15,6 +15,10 @@ langgraph>=0.2.0
 # LLM
 anthropic>=0.28.0
 
+# Google Calendar integration (agent/calendar_client.py)
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+
 # RAG — embeddings + pgvector storage (Postgres, see epars_policies/)
 pgvector>=0.3.6
 sentence-transformers>=2.7.0
