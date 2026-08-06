@@ -16,6 +16,7 @@ CSV files must be in the same folder as this script (or update CSV_DIR below).
 """
 
 import os
+import re
 import pandas as pd
 import psycopg2
 import psycopg2.extras
@@ -27,6 +28,8 @@ load_dotenv()
 # ── Config ─────────────────────────────────────────────────────────────────────
 CSV_DIR = "./dataset"          # ← folder containing your 10 CSV files
                                #   change this if your CSVs are elsewhere
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "localhost"),
@@ -552,9 +555,13 @@ def main():
     print("="*60)
 
     # Connect
-    print(f"\n[1/3] Connecting to PostgreSQL at {DB_CONFIG['host']}:{DB_CONFIG['port']}...")
+    if DATABASE_URL:
+        target = re.sub(r"://([^:]+):[^@]+@", r"://\1:***@", DATABASE_URL)  # redact password
+    else:
+        target = f"{DB_CONFIG['host']}:{DB_CONFIG['port']}"
+    print(f"\n[1/3] Connecting to PostgreSQL at {target}...")
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = psycopg2.connect(DATABASE_URL) if DATABASE_URL else psycopg2.connect(**DB_CONFIG)
         print("      ✓ Connected successfully")
     except Exception as e:
         print(f"      ✗ Connection failed: {e}")

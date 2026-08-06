@@ -4,33 +4,46 @@ ePARS Policy RAG Query Utility
 This module is called by the Agentic AI layer to retrieve
 relevant policy context before making decisions.
 
+Backed by pgvector (Postgres) — see ingest_policies.py for how the
+`policy_chunks` table is populated.
+
 Import and use `query_policies()` as a tool in your LangChain agent.
 """
 
-import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+import os
 from dataclasses import dataclass
 
-CHROMA_DB_PATH  = "./chroma_db"
-COLLECTION_NAME = "epars_policies"
+import psycopg2
+from dotenv import load_dotenv
+from pgvector.psycopg2 import register_vector
+from sentence_transformers import SentenceTransformer
+
+load_dotenv()
+
+TABLE_NAME      = "policy_chunks"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+DATABASE_URL    = os.getenv("DATABASE_URL")
 
-# ── Singleton client (initialised once at import time) ─────────────────────────
-_client     = None
-_collection = None
+# ── Singletons (initialised once at import time) ───────────────────────────────
+_model = None
+_conn  = None
 
-def _get_collection():
-    global _client, _collection
-    if _collection is None:
-        ef = SentenceTransformerEmbeddingFunction(
-            model_name=EMBEDDING_MODEL
-        )
-        _client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-        _collection = _client.get_collection(
-            name=COLLECTION_NAME,
-            embedding_function=ef
-        )
-    return _collection
+
+def _get_model() -> SentenceTransformer:
+    global _model
+    if _model is None:
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+    return _model
+
+
+def _get_conn():
+    global _conn
+    if _conn is None or _conn.closed:
+        if not DATABASE_URL:
+            raise RuntimeError("DATABASE_URL not set. Check your .env file.")
+        _conn = psycopg2.connect(DATABASE_URL)
+        register_vector(_conn)
+    return _conn
 
 
 @dataclass
@@ -44,7 +57,7 @@ class PolicyResult:
 
 def query_policies(query: str, n_results: int = 3) -> list[PolicyResult]:
     """
-    Query the ChromaDB policy store for the most relevant policy
+    Query the pgvector policy store for the most relevant policy
     chunks matching the given query string.
 
     Args:
@@ -59,29 +72,34 @@ def query_policies(query: str, n_results: int = 3) -> list[PolicyResult]:
         for r in results:
             print(r.doc_id, r.similarity, r.text[:200])
     """
-    collection = _get_collection()
+    model = _get_model()
+    conn  = _get_conn()
 
-    raw = collection.query(
-        query_texts=[query],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"],
-    )
+    query_embedding = model.encode(query, normalize_embeddings=True)
 
-    results = []
-    for doc, meta, dist in zip(
-        raw["documents"][0],
-        raw["metadatas"][0],
-        raw["distances"][0],
-    ):
-        results.append(PolicyResult(
-            text        = doc,
-            doc_id      = meta.get("doc_id", "unknown"),
-            title       = meta.get("title", "unknown"),
-            similarity  = round(1 - dist, 4),  # cosine distance → similarity
-            chunk_index = meta.get("chunk_index", 0),
-        ))
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT content, doc_id, title, chunk_index,
+                   1 - (embedding <=> %s) AS similarity
+            FROM {TABLE_NAME}
+            ORDER BY embedding <=> %s
+            LIMIT %s;
+            """,
+            (query_embedding, query_embedding, n_results),
+        )
+        rows = cur.fetchall()
 
-    return results
+    return [
+        PolicyResult(
+            text        = content,
+            doc_id      = doc_id or "unknown",
+            title       = title or "unknown",
+            similarity  = round(similarity, 4),
+            chunk_index = chunk_index or 0,
+        )
+        for content, doc_id, title, chunk_index, similarity in rows
+    ]
 
 
 def format_policy_context(query: str, n_results: int = 3) -> str:

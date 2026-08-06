@@ -3,17 +3,20 @@
 # Database
 psycopg2-binary>=2.9.9
 python-dotenv>=1.0.0
+pandas>=2.2.0
 
 # LangChain (for Step 3 agent)
 langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-anthropic>=0.1.0
+langchain-groq>=0.1.0
+langgraph>=0.2.0
 
 # LLM
 anthropic>=0.28.0
 
-# ChromaDB RAG (from Step 1)
-chromadb>=0.5.0
+# RAG — embeddings + pgvector storage (Postgres, see epars_policies/)
+pgvector>=0.3.6
 sentence-transformers>=2.7.0
 
 # API layer (Step 7)

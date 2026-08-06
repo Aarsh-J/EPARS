@@ -31,11 +31,9 @@ from tools import (
     _serialize,
 )
 
-# ── ChromaDB path ──────────────────────────────────────────────────────────────
-CHROMA_DB_PATH = os.getenv(
-    "CHROMA_DB_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "epars_policies", "chroma_db")
-)
+# ── Policy RAG (pgvector, lives in epars_policies/) ────────────────────────────
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "epars_policies"))
+from rag_query import format_policy_context
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _j(result) -> str:
@@ -152,33 +150,7 @@ def tool_retrieve_hr_policy(query: str) -> str:
     ALWAYS call this before making any final recommendation or taking any action.
     """
     try:
-        import chromadb
-        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-
-        ef = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-        collection = client.get_collection(name="epars_policies", embedding_function=ef)
-
-        results = collection.query(
-            query_texts=[query],
-            n_results=3,
-            include=["documents", "metadatas", "distances"],
-        )
-
-        lines = ["=== Relevant Policy Context ===\n"]
-        for doc, meta, dist in zip(
-            results["documents"][0],
-            results["metadatas"][0],
-            results["distances"][0],
-        ):
-            similarity = round(1 - dist, 3)
-            lines.append(
-                f"[{meta.get('doc_id','?')}] {meta.get('title','?')} "
-                f"(relevance: {similarity})\n{doc.strip()}\n"
-            )
-        lines.append("=== End of Policy Context ===")
-        return "\n".join(lines)
-
+        return format_policy_context(query, n_results=3)
     except Exception as e:
         return f"Policy retrieval unavailable: {e}. Use general HR best practices."
 

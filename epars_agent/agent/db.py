@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 
 load_dotenv()  # reads .env file from project root
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "localhost"),
     "port":     int(os.getenv("DB_PORT", "5432")),
@@ -28,6 +30,9 @@ DB_CONFIG = {
 def get_connection():
     """
     Returns a new psycopg2 connection.
+    Uses DATABASE_URL if set (e.g. Supabase connection string), otherwise
+    falls back to the individual DB_* vars.
+
     Always use as a context manager so it auto-closes:
 
         with get_connection() as conn:
@@ -35,6 +40,11 @@ def get_connection():
                 cur.execute("SELECT ...")
                 rows = cur.fetchall()
     """
+    if DATABASE_URL:
+        return psycopg2.connect(
+            DATABASE_URL,
+            cursor_factory=psycopg2.extras.RealDictCursor
+        )
     return psycopg2.connect(
         **DB_CONFIG,
         cursor_factory=psycopg2.extras.RealDictCursor  # rows come back as dicts

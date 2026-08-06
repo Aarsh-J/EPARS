@@ -1,4 +1,8 @@
-# ePARS Policy Documents & ChromaDB RAG Setup
+# ePARS Policy Documents & pgvector RAG Setup
+
+Policy chunks are embedded and stored in Postgres (`policy_chunks` table, via the
+`vector` extension) in the same Supabase database as the rest of the app — not a
+separate local vector store. See `../docs/SUPABASE.md` for the DB details.
 
 ## Contents
 ```
@@ -12,17 +16,24 @@ docs/
   07_promotion_career_sop.md          SOP-CAREER-007
   08_skill_development_policy.md      POL-SKILL-008
 
-ingest_policies.py   — Run once to load all docs into ChromaDB
+ingest_policies.py   — Run to (re-)embed all docs into the policy_chunks table
 rag_query.py         — Import in your agent to query policies
 requirements.txt     — Python dependencies
 ```
 
 ## Setup
 
+Requires `DATABASE_URL` set in the root `.env` (see `../docs/SUPABASE.md`) and the
+`vector` extension enabled on that Postgres instance — `ingest_policies.py` enables it
+automatically if it isn't already.
+
 ```bash
 pip install -r requirements.txt
 python ingest_policies.py
 ```
+
+Re-run `ingest_policies.py` any time a doc under `docs/` changes — it's idempotent
+(upserts by chunk ID, removes stale/deleted chunks), so it's always safe to re-run.
 
 ## Usage in your Agent
 

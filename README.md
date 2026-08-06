@@ -2,6 +2,14 @@
 
 To copy repo use this command: `git clone https://github.com/Aarsh-J/EPARS.git`
 
+### Documentation
+- [`docs/instructions.md`](docs/instructions.md) — day-to-day setup/run commands
+- [`docs/SUPABASE.md`](docs/SUPABASE.md) — shared DB details, keeping it running, common bugs & fixes
+- [`docs/plan.md`](docs/plan.md) — deployment plan (DB, backend, frontend hosting)
+- [`docs/dataset_schema.md`](docs/dataset_schema.md) — full dataset/table schema spec
+- [`epars_agent/README.md`](epars_agent/README.md) — backend tools & agent setup
+- [`epars_policies/README.md`](epars_policies/README.md) — RAG policy embedding setup
+
 ### Branch rules
 - **develop** : Current working branch with our changes being pushed to it
 - **prod** : Final Branch, develop will be merged when a feature is complete and tested
