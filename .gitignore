@@ -1,7 +1,6 @@
-sampled_dataset/*
-dataset_v1/*
+/venv
 
-code/Dataset Generator/__pycache__/*
-code/Model4_TeamFormation/FT2/*
-code/Model4_TeamFormation/FT3_v1/*
-**/__pycache__/*
+# frontend (React/Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/.env

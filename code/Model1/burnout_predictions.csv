@@ -1,2 +1,0 @@
-employee_id,first_name,last_name,department,role,seniority_level,burnout_score,risk_category,low_threshold,medium_threshold,late_hours_frequency,vacation_days_unused,job_satisfaction,role_ambiguity,stress_load,pressure_index
-EMP009,Ana,Singh,Sales,Account Manager,Lead,15.29,Low,19.48,37.78,2,0,9,1,0.0,3
