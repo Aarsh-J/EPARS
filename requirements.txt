@@ -1,0 +1,10 @@
+# Root aggregator — installs everything needed to run the FastAPI layer
+# (modules/) plus the underlying src/epars_agent and src/epars_policies
+# packages. Each package's own requirements.txt still works standalone for
+# local/terminal-only testing of that package alone.
+-r src/epars_agent/requirements.txt
+-r src/epars_policies/requirements.txt
+
+# API layer (modules/)
+fastapi>=0.111.0
+uvicorn>=0.30.0

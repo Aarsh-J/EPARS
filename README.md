@@ -2,13 +2,44 @@
 
 To copy repo use this command: `git clone https://github.com/Aarsh-J/EPARS.git`
 
+### Layout
+
+```
+backend/
+├── src/                    # pure functions + CLI-testable code — no API/HTTP logic here
+│   ├── epars_agent/         # LangGraph agent, DB tools, burnout monitor, calendar client
+│   └── epars_policies/      # RAG policy embedding + query (pgvector)
+├── modules/                # FastAPI layer — HTTP routes that call into src/
+│   ├── main.py               # entrypoint: uvicorn modules.main:app
+│   ├── performance/routes.py
+│   └── agent/routes.py
+├── dataset/                 # seed CSVs loaded into Supabase
+└── docs/
+```
+
+`src/epars_agent` and `src/epars_policies` stay independently testable from the terminal
+exactly as before (`python agent/db.py`, `python agent/tools.py EMP001 TASK0001`, etc.) — see
+each package's own README. `modules/` is the only place HTTP/API logic lives; run it with:
+
+```bash
+pip install -r requirements.txt
+uvicorn modules.main:app --reload --port 8000
+```
+
+Or via Docker (see [`Dockerfile`](Dockerfile) — secrets are passed at runtime, not baked in):
+```bash
+docker build -t epars-backend .
+docker run -p 8000:8000 --env-file .env epars-backend
+```
+
 ### Documentation
+- [`docs/API-Contracts.md`](docs/API-Contracts.md) — every API route: request/response shape, which `src/` function backs it, known gaps
 - [`docs/instructions.md`](docs/instructions.md) — day-to-day setup/run commands
 - [`docs/SUPABASE.md`](docs/SUPABASE.md) — shared DB details, keeping it running, common bugs & fixes
 - [`docs/plan.md`](docs/plan.md) — deployment plan (DB, backend, frontend hosting)
 - [`docs/dataset_schema.md`](docs/dataset_schema.md) — full dataset/table schema spec
-- [`epars_agent/README.md`](epars_agent/README.md) — backend tools, Google Calendar & burnout monitor setup
-- [`epars_policies/README.md`](epars_policies/README.md) — RAG policy embedding setup
+- [`src/epars_agent/README.md`](src/epars_agent/README.md) — backend tools, Google Calendar & burnout monitor setup
+- [`src/epars_policies/README.md`](src/epars_policies/README.md) — RAG policy embedding setup
 
 ### Branch rules
 - **develop** : Current working branch with our changes being pushed to it

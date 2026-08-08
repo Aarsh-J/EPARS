@@ -14,13 +14,13 @@ Decisions made with the user: keep the backend in Python as-is (do not rewrite i
 ### Shared database: Supabase (Postgres)
 - Free tier gives a single shared Postgres instance with a web dashboard/table editor — easiest for 4 people to inspect data and share one connection string without setting up their own local Postgres.
 - Free projects pause after ~1 week of inactivity but wake up automatically on the next request/login — fine for a class project with intermittent dev activity.
-- **Bonus**: Supabase Postgres supports the `pgvector` extension. Recommend using it to store the RAG embeddings (currently local ChromaDB files in `epars_policies/`) directly in Postgres instead of on-disk Chroma. This matters because Render's free web service has **no persistent disk** — anything ChromaDB writes to disk is wiped on every redeploy/restart. Storing embeddings in Supabase via `pgvector` sidesteps that entirely and keeps everything in one DB. This is a moderate code change (swap the Chroma client for a `pgvector`-backed retriever in `epars_policies/rag_query.py` / `ingest_policies.py`) — worth doing before deploying, not required to start local dev.
+- **Done**: RAG embeddings now live in Supabase via `pgvector` (`policy_chunks` table, see `docs/SUPABASE.md`) instead of local ChromaDB — `src/epars_policies/ingest_policies.py` / `rag_query.py` were migrated. This unblocks Render's free tier, which has **no persistent disk** (anything written to local disk is wiped on every redeploy/restart/idle-spindown).
 - One shared `.env` (via `epars_agent/.env.example` as the template) holding the Supabase connection string, distributed to the 4 devs (not committed).
 
 ### Backend hosting: Render (free web service)
 - User already knows it; free tier (750 instance-hours/month) comfortably covers a small team demo.
 - Caveat to plan for: free instances spin down after 15 min idle and cold-start on the next request (~30-50s) — acceptable for a project demo, not for production SLAs.
-- Deploy `epars_agent/` (FastAPI + uvicorn) as a Render Web Service, pointing `DATABASE_URL` at the Supabase instance. Needs a `requirements.txt` (already present on `develop`) and a start command (`uvicorn epars_agent:app ...` — confirm the actual entrypoint file/app object once on `develop`).
+- **Update**: the FastAPI layer now exists — `modules/main.py` at the worktree root (`app = FastAPI(...)`), which imports and calls into `src/epars_agent` and `src/epars_policies` (moved under `src/` so the API layer and the pure-function/CLI-testable code stay cleanly separated — see `docs/API-Contracts.md` for the full route reference). Deploy the **repo root** (not `epars_agent/`) as the Render Web Service root, with start command `uvicorn modules.main:app --host 0.0.0.0 --port $PORT` and build command `pip install -r requirements.txt` (the new root aggregator, which pulls in `src/epars_agent/requirements.txt` + `src/epars_policies/requirements.txt` + fastapi/uvicorn).
 
 ### Frontend hosting: Vercel
 - Best free-tier fit for a JS frontend (React/Vite or Next.js) — automatic deploys from git, generous free tier, zero config for standard React setups.
@@ -29,8 +29,8 @@ Decisions made with the user: keep the backend in Python as-is (do not rewrite i
 ## Action Plan
 1. **Merge/rebase `develop` onto `main`** (or agree as a team which branch is the real trunk) so the actual working code isn't stranded off `main`. Confirm with the user/team before doing this — it's a branch decision, not purely technical.
 2. **Create the Supabase project**, run `setup_database.py` (from `develop`) against it to create the schema from `schema_specification.md`, and share the connection string with the 4 devs via `.env` (based on `epars_agent/.env.example`).
-3. **(Recommended) Migrate RAG storage from local ChromaDB to pgvector on Supabase** so the backend has no dependency on local/ephemeral disk before deploying to Render.
-4. **Deploy backend to Render**: connect the repo, set root dir to `epars_agent/` (or wherever the FastAPI app lives on `develop`), set env vars (`DATABASE_URL`, Anthropic API key, etc.), deploy.
+3. ~~Migrate RAG storage from local ChromaDB to pgvector on Supabase~~ — **done**.
+4. **Deploy backend to Render**: connect the repo, set root dir to the worktree root (where `modules/main.py` lives, not `src/epars_agent/`), set env vars (`DATABASE_URL`, `GROQ_API_KEY`, `FRONTEND_ORIGIN`, etc.), deploy. A [`Dockerfile`](../Dockerfile) now exists too — Render can build directly from it (Environment: Docker instead of Python 3) if you'd rather not rely on Render's native Python buildpack; it already reads `$PORT` the way Render expects.
 5. **Scaffold the JS frontend** (React via Vite recommended for simplicity) if it doesn't exist yet, pointing API calls at the Render backend URL.
 6. **Deploy frontend to Vercel**, connect repo, set `VITE_API_URL` (or equivalent) env var to the Render backend's public URL.
 7. **Add `.env.example`, `Dockerfile`(optional), and deployment docs to `README.md`** so the whole team has one source of truth for setup — currently the README only covers branching conventions.
@@ -52,8 +52,8 @@ Decisions made with the user: keep the backend in Python as-is (do not rewrite i
 ### Render
 1. Go to render.com and sign up (GitHub login recommended — lets you connect the repo directly).
 2. Once logged in: New → Web Service → connect your GitHub account → select the EPARS repo → pick the branch (`develop`, or `main` after the merge in step 1).
-3. Set Root Directory to `epars_agent` (or wherever the FastAPI app ends up living).
-4. Environment: Python 3. Build command: `pip install -r requirements.txt`. Start command: `uvicorn <module>:app --host 0.0.0.0 --port $PORT` (confirm the actual module/app object name once `develop` is merged).
+3. Set Root Directory to the worktree root (`modules/main.py` is the FastAPI entrypoint).
+4. Environment: Python 3. Build command: `pip install -r requirements.txt`. Start command: `uvicorn modules.main:app --host 0.0.0.0 --port $PORT`.
 5. Instance type: Free.
 6. Add environment variables: `DATABASE_URL` (from Supabase), `ANTHROPIC_API_KEY` (or whichever LLM key `epars_agent` uses), and any others found in `.env.example`.
 7. Create Web Service — Render will build and deploy automatically on every push to the selected branch. Invite the other 3 devs under Account Settings → Team so they can see logs/redeploys, not just one person owning the service.

@@ -12,7 +12,8 @@ Requirements:
     pip install psycopg2-binary pandas python-dotenv
 
 Make sure your .env file has the correct DB credentials before running.
-CSV files must be in the same folder as this script (or update CSV_DIR below).
+CSV files are expected in <worktree_root>/dataset/ (resolved relative to this
+file's location, not CWD — see CSV_DIR below).
 """
 
 import os
@@ -22,12 +23,14 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 from io import StringIO
+from pathlib import Path
 
 load_dotenv()
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-CSV_DIR = "./dataset"          # ← folder containing your 10 CSV files
-                               #   change this if your CSVs are elsewhere
+# Resolved relative to this file (src/epars_agent/) rather than CWD, so it works
+# regardless of where `python setup_database.py` is run from.
+CSV_DIR = str(Path(__file__).resolve().parent.parent.parent / "dataset")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 

@@ -27,4 +27,4 @@ ingestion_log.json
 Thumbs.db
 
 # Google Cloud service account key
-epars_agent/agent/sa_key.json
+agent/sa_key.json
