@@ -38,6 +38,7 @@ def get_employee_profile(employee_id: str) -> dict:
         SELECT
             employee_id,
             first_name || ' ' || last_name           AS full_name,
+            email,
             department,
             role,
             seniority_level,
@@ -419,15 +420,46 @@ def create_calendar_event(task_id: str, employee_id: str, start_time: str, end_t
     task = get_task_details(task_id)
     if "error" in task:
         return {"success": False, "error": task["error"]}
+    employee = get_employee_profile(employee_id)
+    employee_email = employee.get("email") if "error" not in employee else None
+
+    existing_sql = """
+        SELECT google_event_id FROM task_assignments
+        WHERE task_id = %s AND employee_id = %s AND google_event_id IS NOT NULL
+        ORDER BY assignment_date DESC LIMIT 1
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(existing_sql, (task_id, employee_id))
+                existing = cur.fetchone()
+        if existing and existing.get("google_event_id"):
+            old_event_id = existing["google_event_id"]
+            if employee_email:
+                delete_event(old_event_id, calendar_id=employee_email)
+            delete_event(old_event_id, calendar_id=None)  # best-effort fallback cleanup too
+    except Exception:
+        pass  # best-effort cleanup — don't block creating the new event over this
 
     summary = f"[{task_id}] {task.get('task_type', 'Task')} — {employee_id}"
     description = task.get("description", "") or ""
-    cal_result = create_event(
+    '''cal_result = create_event(
         summary=summary,
         start_time=start_time,
         end_time=end_time,
         description=description,
-    )
+        attendee_emails=[employee_email] if employee_email else None
+    )'''
+
+    cal_result = None
+    if employee_email:
+        cal_result = create_event(summary=summary, start_time=start_time, end_time=end_time,
+                                   description=description, calendar_id=employee_email)
+    if not cal_result or not cal_result.get("success"):
+        # fall back to shared calendar (fake @epars.com emails, unshared calendars, etc.)
+        cal_result = create_event(summary=summary, start_time=start_time, end_time=end_time,
+                                   description=description, calendar_id=None)
+        
     if not cal_result.get("success"):
         return {"success": False, "error": cal_result.get("error", "Calendar API call failed.")}
     event_id = cal_result["event_id"]
@@ -490,7 +522,19 @@ def reschedule_calendar_event(task_id: str, employee_id: str, new_start_time: st
         if not row or not row.get("google_event_id"):
             return {"success": False, "error": f"No calendar event found for {task_id}/{employee_id}. Create one first."}
         event_id = row["google_event_id"]
-        cal_result = update_event(event_id=event_id, start_time=new_start_time, end_time=new_end_time,)
+
+        employee = get_employee_profile(employee_id)
+        employee_email = employee.get("email") if "error" not in employee else None
+
+        cal_result = None
+        if employee_email:
+            cal_result = update_event(event_id=event_id, start_time=new_start_time,
+                                       end_time=new_end_time, calendar_id=employee_email)
+        if not cal_result or not cal_result.get("success"):
+            cal_result = update_event(event_id=event_id, start_time=new_start_time,
+                                       end_time=new_end_time, calendar_id=None)
+
+        #cal_result = update_event(event_id=event_id, start_time=new_start_time, end_time=new_end_time)  
         if not cal_result.get("success"):
             return {"success": False, "error": cal_result.get("error", "Calendar API update failed.")}
         return {
@@ -528,7 +572,16 @@ def cancel_calendar_event(task_id: str, employee_id: str) -> dict:
         if not row or not row.get("google_event_id"):
             return {"success": False, "error": f"No calendar event found for {task_id}/{employee_id}."}
         event_id = row["google_event_id"]
-        cal_result = delete_event(event_id)
+
+        employee = get_employee_profile(employee_id)
+        employee_email = employee.get("email") if "error" not in employee else None
+
+        cal_result = None
+        if employee_email:
+            cal_result = delete_event(event_id, calendar_id=employee_email)
+        if not cal_result or not cal_result.get("success"):
+            cal_result = delete_event(event_id, calendar_id=None)
+
         if not cal_result.get("success"):
             return {"success": False, "error": cal_result.get("error", "Calendar API delete failed.")}
         with get_connection() as conn:

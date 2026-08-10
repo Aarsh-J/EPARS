@@ -14,6 +14,7 @@ Create a single `.env` in the **project root** (not inside `src/epars_agent/` or
 DATABASE_URL=postgresql://postgres:<password>@<supabase-host>:5432/postgres
 GROQ_API_KEY=gsk_...
 ANTHROPIC_API_KEY=sk-ant-...
+Google_Calendar_API=epars-4@coral-sum-501906-i7.iam.gserviceaccount.com (make changes and see all event details)
 ```
 Get the real `DATABASE_URL` from whoever set up the shared Supabase project (see
 `SUPABASE.md`) — don't create your own local Postgres instance, everyone shares one DB.
@@ -104,3 +105,8 @@ modules/                       ← FastAPI layer, calls into src/ — see API-Co
 
 dataset/                       ← the 10 seed CSVs (project root, not inside src/)
 ```
+### Test emails
+1. epars01t@gmail.com -> testcase01
+2. epars4c@gmail.com -> epars4321
+3. epars03t@gmail.com -> epars1234
+4. epars04t@gmail.com -> #epars123
