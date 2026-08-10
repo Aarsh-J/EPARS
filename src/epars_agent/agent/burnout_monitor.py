@@ -203,23 +203,41 @@ Respond with ONLY a JSON object, no other text, no markdown fences:
 def find_next_free_slot(employee_id: str, duration_hours: int = DEFAULT_EVENT_DURATION_HOURS,
                          days_ahead: int = 7, work_start_hour: int = 9, work_end_hour: int = 18):
     """
-    Scans this employee's existing calendar events (identified by employee_id
-    appearing in the event summary, per create_calendar_event's naming) over
-    the next `days_ahead` days and returns the first non-overlapping slot
-    within working hours. Falls back to tomorrow 9am if nothing fits.
+    Scans this employee's existing calendar events over the next `days_ahead`
+    days and returns the first non-overlapping slot within working hours.
+    Checks the employee's own calendar (if they have a real, shared one),
+    falling back to the shared team calendar otherwise — matching the same
+    routing logic used by create_calendar_event in tools.py.
     """
+    from tools import get_employee_profile
+
     window_start = (datetime.now() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     window_end = window_start + timedelta(days=days_ahead)
 
-    result = list_events(
-        time_min=window_start.isoformat() + "Z",
-        time_max=window_end.isoformat() + "Z",
-        max_results=100,
-    )
+    employee = get_employee_profile(employee_id)
+    employee_email = employee.get("email") if "error" not in employee else None
+
+    result = None
+    if employee_email:
+        result = list_events(
+            time_min=window_start.isoformat() + "Z",
+            time_max=window_end.isoformat() + "Z",
+            max_results=100,
+            calendar_id=employee_email,
+        )
+    if not result or not result.get("success"):
+        result = list_events(
+            time_min=window_start.isoformat() + "Z",
+            time_max=window_end.isoformat() + "Z",
+            max_results=100,
+            calendar_id=None,
+        )
 
     busy = []
     if result.get("success"):
         for ev in result.get("events", []):
+            # Filter by employee_id in the summary as a safety net for the
+            # shared-calendar fallback case (which may hold other people's events too)
             if employee_id in ev.get("summary", ""):
                 try:
                     start_dt = datetime.fromisoformat(ev["start"].replace("Z", "+00:00")).replace(tzinfo=None)
