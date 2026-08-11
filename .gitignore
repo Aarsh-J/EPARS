@@ -1,10 +1,12 @@
-sampled_dataset/*
-dataset_v1/*
-
-code/Dataset Generator/__pycache__/*
-code/Model4_TeamFormation/FT2/*
-code/Model4_TeamFormation/FT3_v1/*
-**/__pycache__/*
-venv
+#environment files
 .env
+venv
+
+#python
+**/__pycache__/*
+
+#docker
+docker-compose.yml
+
 sa_key.json
+dataset/
