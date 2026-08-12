@@ -18,19 +18,21 @@ pure API client; backend (wherever it ends up running) exposes plain JSON endpoi
 
 ## What's done
 
-Converted the Flask/Jinja UI to a React app in [frontend/](frontend/) (Vite + React 18 +
-react-router-dom, plain JS, no TypeScript — matches the original app's plain-JS style):
+Converted the Flask/Jinja UI to a React app at the repo root (Vite + React 18 +
+react-router-dom, plain JS, no TypeScript — matches the original app's plain-JS style).
+*(Originally scaffolded under a `frontend/` subfolder; flattened to the repo root so this
+branch's layout matches `dev-backend`'s — see `src/` below.)*
 
-- [frontend/src/components/Sidebar.jsx](frontend/src/components/Sidebar.jsx),
-  [Layout.jsx](frontend/src/components/Layout.jsx) — from `base.html`'s sidebar/topbar chrome.
-- [frontend/src/pages/Dashboard.jsx](frontend/src/pages/Dashboard.jsx) — the module grid
+- [src/components/Sidebar.jsx](src/components/Sidebar.jsx),
+  [Layout.jsx](src/components/Layout.jsx) — from `base.html`'s sidebar/topbar chrome.
+- [src/pages/Dashboard.jsx](src/pages/Dashboard.jsx) — the module grid
   (`dashboard.html`), same 4 modules (Performance active, 3 "coming soon").
-- [frontend/src/pages/Performance.jsx](frontend/src/pages/Performance.jsx) — employee
+- [src/pages/Performance.jsx](src/pages/Performance.jsx) — employee
   table + search + analyse flow + results panel (score circle, cluster breakdown,
   sub-scores, review history), converted from `performance.html`'s server-rendered table +
   inline `<script>` DOM manipulation into React state/hooks. Same visual design, same CSS
-  (ported verbatim to [frontend/src/styles/style.css](frontend/src/styles/style.css)).
-- [frontend/src/api/client.js](frontend/src/api/client.js) — a small fetch wrapper reading
+  (ported verbatim to [src/styles/style.css](src/styles/style.css)).
+- [src/api/client.js](src/api/client.js) — a small fetch wrapper reading
   the backend base URL from `VITE_API_URL` (see `.env.example`), with two calls:
   `getEmployees()` and `analyseEmployee(id, reviewId)`.
 - Old Flask files (`code/app.py`, `code/templates/`, `code/static/`, `code/diagnose.py`,
@@ -58,7 +60,7 @@ and which backend function backs each route are documented in
 **⚠️ Breaking change for this frontend:** `/api/performance/analyse` does **not** return
 `breakdown` (technical/behavioral/quality/productivity) or `sub_scores` (10 named 0–10
 scores) — that data would come from `Model2_Performance`, which isn't part of `dev-backend`.
-[frontend/src/pages/Performance.jsx](frontend/src/pages/Performance.jsx)'s `ResultContent`
+[src/pages/Performance.jsx](src/pages/Performance.jsx)'s `ResultContent`
 component still renders those sections and will need updating to drop them (or render a
 "not available yet" placeholder) — tracked as step 1 below. Everything else
 (`predicted_score`, `rating_label`/`rating_color`, `all_reviews`) matches what the frontend
@@ -66,15 +68,15 @@ already expects.
 
 ## How frontend connects to backend
 
-- **Local dev:** run the backend on `http://localhost:8000` (or wherever), set
-  `frontend/.env` → `VITE_API_URL=http://localhost:8000`, `npm run dev` in `frontend/`.
+- **Local dev:** run the backend on `http://localhost:8000` (or wherever), set this repo's
+  root `.env` → `VITE_API_URL=http://localhost:8000`, `npm run dev` from the repo root.
   No proxy needed — the fetch client reads the URL directly; backend must allow CORS from
   `http://localhost:5173` in dev.
 - **Production:** per the existing deployment plan (Supabase + Render for backend), deploy
-  `frontend/` to Vercel (or Render static site) as a plain static build (`npm run build` →
-  `dist/`), and set `VITE_API_URL` in Vercel's env vars to the deployed backend's Render URL.
-  No Python runtime needed for the frontend anymore — this un-blocks Vercel, which couldn't
-  host the old Flask app.
+  this repo (root directory) to Vercel (or Render static site) as a plain static build
+  (`npm run build` → `dist/`), and set `VITE_API_URL` in Vercel's env vars to the deployed
+  backend's Render URL. No Python runtime needed for the frontend anymore — this un-blocks
+  Vercel, which couldn't host the old Flask app.
 
 ## Next steps, in order
 
@@ -82,8 +84,8 @@ already expects.
    (cluster bars, sub-score grid) in `ResultContent` since the real API doesn't return them
    — either remove those sections or show a "not available yet" placeholder until
    `Model2_Performance` is ported into `dev-backend`.
-2. Point `frontend/.env`'s `VITE_API_URL` at the backend (`http://localhost:8000` when
-   running `uvicorn modules.main:app` locally from the `backend` worktree) and verify the
+2. Point this repo's root `.env`'s `VITE_API_URL` at the backend (`http://localhost:8000`
+   when running `uvicorn modules.main:app` locally from the `backend` worktree) and verify the
    Performance page end-to-end — employee list loads, Analyse button returns real scores.
 3. CORS is already enabled backend-side for `http://localhost:5173` (via `FRONTEND_ORIGIN`
    env var, see `API-Contracts.md`) — update that env var when deploying the frontend
@@ -96,10 +98,10 @@ already expects.
 
 ## Verification
 
-- `cd frontend && npm install && npm run build` — must succeed (already verified).
-- `cd frontend && npm run dev` — open `http://localhost:5173`, confirm Dashboard renders,
+- `npm install && npm run build` (from the repo root) — must succeed (already verified).
+- `npm run dev` — open `http://localhost:5173`, confirm Dashboard renders,
   clicking "Performance Evaluation" navigates to `/performance`. The employee table will be
   empty and show a fetch error until the backend is running and `VITE_API_URL` points at it
   (step 2 above) — that's expected, not a bug in the frontend.
-- Cross-check `frontend/API-Contracts.md` against `backend/docs/API-Contracts.md` — they
+- Cross-check `API-Contracts.md` (repo root) against `backend/docs/API-Contracts.md` — they
   should be identical; if not, re-copy from the backend worktree.

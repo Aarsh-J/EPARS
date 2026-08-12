@@ -1,7 +1,7 @@
 # ePARS API Contracts
 
 Canonical copy: `backend/docs/API-Contracts.md` on the **`dev-backend`** branch. A copy of
-this file is kept at `EPARS/frontend/API-Contracts.md` on the **`ui-changes`** branch so the
+this file is kept at `API-Contracts.md` (repo root) on the **`dev-frontend`** branch so the
 frontend team can read it without backend code access — **re-copy this file there after any
 change** until the branches are merged.
 

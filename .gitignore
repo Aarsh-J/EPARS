@@ -1,6 +1,8 @@
+# environment files
+.env
 /venv
 
-# frontend (React/Vite)
-frontend/node_modules/
-frontend/dist/
-frontend/.env
+# React/Vite
+node_modules/
+dist/
+
