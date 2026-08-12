@@ -19,10 +19,4 @@ anthropic>=0.28.0
 google-api-python-client>=2.100.0
 google-auth>=2.23.0
 
-# RAG — embeddings + pgvector storage (Postgres, see epars_policies/)
-pgvector>=0.3.6
-sentence-transformers>=2.7.0
 
-# API layer (Step 7)
-fastapi>=0.111.0
-uvicorn>=0.30.0

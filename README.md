@@ -26,11 +26,28 @@ pip install -r requirements.txt
 uvicorn modules.main:app --reload --port 8000
 ```
 
+### Run (local dev, Windows)
+
+```powershell
+# from the repo root, one-time: python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn modules.main:app --reload --port 8000    # http://localhost:8000, docs at /docs
+```
+
+Stop: `Ctrl+C` in the terminal running uvicorn. If it was started in the background and
+you lost the terminal, find and kill it by port:
+```powershell
+netstat -ano | findstr :8000       # note the PID in the last column
+taskkill /F /PID <pid>
+```
+
 Or via Docker (see [`Dockerfile`](Dockerfile) — secrets are passed at runtime, not baked in):
 ```bash
 docker build -t epars-backend .
 docker run -p 8000:8000 --env-file .env epars-backend
 ```
+Stop: `docker stop <container_id>` (or `docker compose down` if using `docker-compose.yml`).
 
 ### Documentation
 - [`docs/API-Contracts.md`](docs/API-Contracts.md) — every API route: request/response shape, which `src/` function backs it, known gaps
@@ -47,45 +64,3 @@ docker run -p 8000:8000 --env-file .env epars-backend
 - **preprocessor** : Branch containing our Dataset generation code and our ML Model code (we will copy the complete ML model to main branches, tweeking will be done here)
 
 #### Try using proper branch naming conventions and commit messages for clearity 
-
-### Git Commands
-- `git branch` : List out existing branches
-- `git branch <branch_name>` : Create ew branch from your current branch (but you dont move to the created branch)
-- `git branch -d <name>` : delete branch
-- `git branch -m <old-name> <new-name>` : rename branch
-  
-- `git checkout <branch_name>` : move to existing branch
-- `git checkout -b <branch_name>` : create new branch (from your current branch) and open that 
-- `git checkout --orphan <branch_name>` : create new branch with no parent
-
-- `git pull <branch-name>` : pull branch to yor current (existing in your device/local)
-- `git pull origin <branch-name>` : pull branch from git to yor current
-
-- `git commit -m "[message]"` : commit
-- `git push origin <branch-nae>` : pushes/merges your branch to specified one in git
-# Employee Performance Analyzer and Recommendation System (EPARS)
-
-To copy repo use this command: `git clone https://github.com/Aarsh-J/EPARS.git`
-
-### Branch rules
-- **develop** : Current working branch with our changes being pushed to it
-- **prod** : Final Branch, develop will be merged when a feature is complete and tested
-- **preprocessor** : Branch containing our Dataset generation code and our ML Model code (we will copy the complete ML model to main branches, tweeking will be done here)
-
-#### Try using proper branch naming conventions and commit messages for clearity 
-
-### Git Commands
-- `git branch` : List out existing branches
-- `git branch <branch_name>` : Create ew branch from your current branch (but you dont move to the created branch)
-- `git branch -d <name>` : delete branch
-- `git branch -m <old-name> <new-name>` : rename branch
-  
-- `git checkout <branch_name>` : move to existing branch
-- `git checkout -b <branch_name>` : create new branch (from your current branch) and open that 
-- `git checkout --orphan <branch_name>` : create new branch with no parent
-
-- `git pull <branch-name>` : pull branch to yor current (existing in your device/local)
-- `git pull origin <branch-name>` : pull branch from git to yor current
-
-- `git commit -m "[message]"` : commit
-- `git push origin <branch-nae>` : pushes/merges your branch to specified one in git

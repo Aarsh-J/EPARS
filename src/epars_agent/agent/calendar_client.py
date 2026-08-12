@@ -13,6 +13,7 @@ If calendar_id is omitted, falls back to the shared team CALENDAR_ID.
 """
 
 import datetime
+import os
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -21,10 +22,26 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 SERVICE_ACCOUNT_FILE = 'sa_key.json'
 CALENDAR_ID = 'aarna.manjunath04@gmail.com'  # shared team calendar — fallback default
 
-_creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
-)
-_service = build('calendar', 'v3', credentials=_creds)
+_service = None
+
+
+def _get_service():
+    """Lazily builds the Calendar API client on first use, so importing this
+    module (e.g. via tools.py) doesn't require sa_key.json to be present —
+    only actually calling a calendar function does."""
+    global _service
+    if _service is None:
+        if not os.path.exists(SERVICE_ACCOUNT_FILE):
+            raise RuntimeError(
+                f"Google Calendar not configured: '{SERVICE_ACCOUNT_FILE}' not found "
+                "(expected in src/epars_agent/agent/). See src/epars_agent/README.md "
+                "'Set up Google Calendar integration' to create it."
+            )
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
+        _service = build('calendar', 'v3', credentials=creds)
+    return _service
 
 
 def create_event(summary: str, start_time: str, end_time: str, description: str = "", calendar_id: str | None = None, timezone: str = "Asia/Kolkata") -> dict:
@@ -45,7 +62,7 @@ def create_event(summary: str, start_time: str, end_time: str, description: str 
     }
 
     try:
-        event = _service.events().insert(calendarId=target_calendar, body=event_body).execute()
+        event = _get_service().events().insert(calendarId=target_calendar, body=event_body).execute()
         return {'success': True, 'event_id': event['id'], 'calendar_id': target_calendar,
                 'html_link': event.get('htmlLink')}
     except HttpError as e:
@@ -60,7 +77,7 @@ def update_event(event_id: str, start_time: str | None = None, end_time: str | N
     """
     target_calendar = calendar_id or CALENDAR_ID
     try:
-        event = _service.events().get(calendarId=target_calendar, eventId=event_id).execute()
+        event = _get_service().events().get(calendarId=target_calendar, eventId=event_id).execute()
 
         if start_time:
             event['start'] = {'dateTime': start_time, 'timeZone': timezone}
@@ -69,7 +86,7 @@ def update_event(event_id: str, start_time: str | None = None, end_time: str | N
         if summary:
             event['summary'] = summary
 
-        updated = _service.events().update(calendarId=target_calendar, eventId=event_id, body=event).execute()
+        updated = _get_service().events().update(calendarId=target_calendar, eventId=event_id, body=event).execute()
         return {'success': True, 'event_id': updated['id']}
     except HttpError as e:
         return {'success': False, 'error': str(e)}
@@ -81,7 +98,7 @@ def delete_event(event_id: str, calendar_id: str | None = None) -> dict:
     """
     target_calendar = calendar_id or CALENDAR_ID
     try:
-        _service.events().delete(calendarId=target_calendar, eventId=event_id).execute()
+        _get_service().events().delete(calendarId=target_calendar, eventId=event_id).execute()
         return {'success': True}
     except HttpError as e:
         return {'success': False, 'error': str(e)}
@@ -100,7 +117,7 @@ def list_events(time_min: str | None = None, time_max: str | None = None, max_re
         time_max = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat() + 'Z'
 
     try:
-        result = _service.events().list(
+        result = _get_service().events().list(
             calendarId=target_calendar,
             timeMin=time_min,
             timeMax=time_max,

@@ -1,12 +1,10 @@
 #environment files
 .env
 venv
+.venv
 
 #python
 **/__pycache__/*
 
 #docker
 docker-compose.yml
-
-sa_key.json
-dataset/
