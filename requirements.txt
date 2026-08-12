@@ -8,3 +8,9 @@
 # API layer (modules/)
 fastapi>=0.111.0
 uvicorn>=0.30.0
+
+# ML inference (modules/ml/) — pinned to match ml_models/*.pkl training env
+scikit-learn==1.8.0
+joblib>=1.3.0
+numpy>=1.26.0
+pandas>=2.2.0

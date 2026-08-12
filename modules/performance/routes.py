@@ -6,11 +6,11 @@ DB connection helper and tool functions from src/epars_agent — no new DB logic
 is duplicated beyond the two list/history queries tools.py doesn't already have
 (there is no existing "all employees" or "review history" tool).
 
-NOTE — known gap: the frontend's Performance page was originally built against
-a richer response shape (competency breakdown + 10 named sub-scores) that would
-come from Model2_Performance, which does not exist on this branch. This router
-only returns fields backed by real data in the shared Supabase DB. See
-docs/API-Contracts.md for the full documented contract and this gap.
+/analyse returns both the DB-stored `predicted_score` and a `live_predicted_score`
+from performance_model.pkl (see modules/ml/), plus `score_signals` — real
+per-review-dimension scores and engineered composites for the UI. See
+ml_models/README.md for what's real vs. mean-imputed in the live model, and
+docs/performance_scoring.md / docs/API-Contracts.md for the full contract.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -18,6 +18,9 @@ from pydantic import BaseModel
 
 from db import get_connection
 from tools import get_employee_profile, get_employee_ml_scores, _to_list
+
+from ..ml.performance_features import get_score_signals
+from ..ml.predict import predict_performance
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
@@ -92,11 +95,6 @@ class AnalyseRequest(BaseModel):
 
 @router.post("/analyse")
 def analyse_employee(body: AnalyseRequest):
-    """
-    Real-data analysis for one employee. Does NOT return `breakdown` or
-    `sub_scores` — that data would come from Model2_Performance, which isn't
-    part of this branch yet. See docs/API-Contracts.md.
-    """
     profile = get_employee_profile(body.employee_id)
     if "error" in profile:
         raise HTTPException(status_code=404, detail=profile["error"])
@@ -104,6 +102,12 @@ def analyse_employee(body: AnalyseRequest):
     ml_scores = get_employee_ml_scores(body.employee_id)
     try:
         reviews = _review_history(body.employee_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    try:
+        live = predict_performance(body.employee_id, body.review_id)
+        signals = get_score_signals(body.employee_id, body.review_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -123,5 +127,10 @@ def analyse_employee(body: AnalyseRequest):
         "predicted_score": predicted_score,
         "rating_label": rating_label,
         "rating_color": rating_color,
+        "live_predicted_score": live["predicted_score"],
+        "live_confidence": live["confidence"],
+        "live_real_feature_count": live["real_feature_count"],
+        "live_total_feature_count": live["total_feature_count"],
+        "score_signals": signals,
         "all_reviews": reviews,
     }

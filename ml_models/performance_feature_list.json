@@ -1,0 +1,29 @@
+{
+  "_provenance": "Recovered via `git show ff35243c:code/Model2_Performance/feature_list.pkl` (commit 'Add files via upload'), verified to match performance_model.pkl's scaler.feature_names_in_ exactly. Preprocessing logic cross-checked against `git show 8d893c0a:code/Model2_Performance/performance_preprocessing.py`.",
+  "features": [
+    "technical_competence_score", "domain_knowledge_score", "problem_solving_score",
+    "innovation_score", "quality_of_work_score", "productivity_score",
+    "communication_score", "collaboration_score", "leadership_score",
+    "initiative_score", "adaptability_score", "reliability_score",
+    "time_management_score", "tasks_completed", "projects_completed",
+    "average_task_quality", "on_time_delivery_rate", "productivity_vs_peers",
+    "total_hours_worked", "overtime_hours", "utilization_rate",
+    "self_assessment_score", "review_type_enc", "years_of_experience",
+    "technical_proficiency_score", "domain_expertise_score",
+    "historical_performance_score", "average_task_completion_rate",
+    "work_life_balance_score", "burnout_risk_score", "fb_overall_rating",
+    "fb_quality_rating", "fb_timeliness_rating", "fb_collaboration_rating",
+    "fb_communication_rating", "fb_innovation_rating", "fb_sentiment_score",
+    "fb_count", "fb_composite_rating", "wh_avg_productivity",
+    "wh_avg_efficiency", "wh_avg_task_completion", "wh_avg_quality",
+    "wh_avg_engagement", "wh_avg_stress", "wh_avg_cognitive_load",
+    "wh_overtime_days", "wh_avg_focus_hours", "wh_avg_burnout_risk",
+    "wh_health_score", "output_quality_composite", "overtime_ratio",
+    "peer_productivity_gap"
+  ],
+  "not_available_in_live_db": [
+    "innovation_score", "adaptability_score", "reliability_score",
+    "utilization_rate", "work_life_balance_score", "fb_innovation_rating",
+    "fb_sentiment_score", "wh_avg_engagement", "wh_avg_cognitive_load"
+  ]
+}

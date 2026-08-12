@@ -1,10 +1,35 @@
-#environment files
+# environment files
 .env
-venv
-.venv
+.env.*
+!.env.example
+venv/
+.venv/
+env/
 
-#python
-**/__pycache__/*
+# python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-#docker
+# logs
+*.log
+uvicorn_log.txt
+uvicorn_logs.txt
+
+# generated test output (src/epars_agent/test_agent.py)
+test_trace_*.json
+
+# editor/OS
+.DS_Store
+.idea/
+
+# docker
 docker-compose.yml
