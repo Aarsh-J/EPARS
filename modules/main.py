@@ -25,13 +25,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .performance.routes import router as performance_router  # noqa: E402  (needs SRC_DIR on path first)
+from .burnout.routes import router as burnout_router  # noqa: E402
 from .agent.routes import router as agent_router  # noqa: E402
+from .ml.loader import preload_models  # noqa: E402
 
-app = FastAPI(title="ePARS API")
+logger = logging.getLogger("epars.startup")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    errors = preload_models()
+    for name, err in errors.items():
+        logger.error("Failed to load %s model at startup: %s", name, err)
+    yield
+
+
+app = FastAPI(title="ePARS API", lifespan=lifespan)
 
 _default_origins = "http://localhost:5173"
 allowed_origins = os.getenv("FRONTEND_ORIGIN", _default_origins).split(",")
@@ -45,6 +61,7 @@ app.add_middleware(
 )
 
 app.include_router(performance_router, prefix="/api")
+app.include_router(burnout_router, prefix="/api")
 app.include_router(agent_router, prefix="/api")
 
 
