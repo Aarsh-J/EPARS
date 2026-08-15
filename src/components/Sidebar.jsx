@@ -23,16 +23,8 @@ const NAV_ITEMS = [
       </>
     ),
   },
-];
-
-const SOON_ITEMS = [
   {
-    label: "Task Assignment",
-    icon: (
-      <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-    ),
-  },
-  {
+    to: "/burnout",
     label: "Workload & Risk",
     icon: (
       <path
@@ -40,6 +32,15 @@ const SOON_ITEMS = [
         clipRule="evenodd"
         d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11 4a1 1 0 10-2 0v4a1 1 0 102 0V7zm-3 1a1 1 0 10-2 0v3a1 1 0 102 0V8zM8 9a1 1 0 00-2 0v2a1 1 0 102 0V9z"
       />
+    ),
+  },
+];
+
+const SOON_ITEMS = [
+  {
+    label: "Task Assignment",
+    icon: (
+      <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
     ),
   },
   {

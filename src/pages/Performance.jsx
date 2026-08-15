@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { getEmployees, analyseEmployee } from "../api/client.js";
+import { getEmployees, analyseEmployee, finalizePerformanceScore } from "../api/client.js";
 
-const CLUSTER_META = [
-  { key: "technical", name: "Technical", weight: "30%", color: "#1d4ed8" },
-  { key: "behavioral", name: "Behavioral", weight: "25%", color: "#0891b2" },
-  { key: "quality", name: "Quality", weight: "20%", color: "#059669" },
-  { key: "productivity", name: "Productivity", weight: "25%", color: "#d97706" },
+const SIGNAL_META = [
+  { key: "output_quality_composite", label: "Output Quality" },
+  { key: "overtime_ratio", label: "Overtime Ratio" },
+  { key: "peer_productivity_gap", label: "Peer Productivity Gap" },
+  { key: "fb_composite_rating", label: "Feedback Rating" },
 ];
 
-const SUBSCORE_LABELS = {
+const REVIEW_DIMENSION_LABELS = {
   technical_competence: "Technical Competence",
   domain_knowledge: "Domain Knowledge",
   problem_solving: "Problem Solving",
@@ -26,6 +26,16 @@ function scoreClass(score) {
   if (score >= 70) return "score-good";
   if (score >= 55) return "score-avg";
   return "score-low";
+}
+
+// Mirrors modules/performance/routes.py::_rating exactly, so the header can
+// update immediately after a manager finalizes a score without a re-fetch.
+function ratingFromScore(score) {
+  if (score == null) return { label: "Unrated", color: "#94a3b8" };
+  if (score >= 85) return { label: "Exceptional", color: "#065f46" };
+  if (score >= 70) return { label: "High Performer", color: "#1e40af" };
+  if (score >= 55) return { label: "Meets Expectations", color: "#92400e" };
+  return { label: "Needs Improvement", color: "#991b1b" };
 }
 
 export default function Performance() {
@@ -153,6 +163,33 @@ export default function Performance() {
 function ResultContent({ data, onSelectReview, onBack }) {
   const emp = data.employee;
   const initials = emp.employee_id.slice(-3);
+  const latestReviewId = data.all_reviews?.[0]?.review_id || null;
+
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(data.ai_predicted_score ?? "");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [finalized, setFinalized] = useState(data.last_decision || null);
+
+  const displayScore = finalized ? finalized.final_score : data.recorded_score;
+  const displayRating = finalized ? ratingFromScore(finalized.final_score) : { label: data.rating_label, color: data.rating_color };
+
+  function submitDecision(decision, finalScore) {
+    setSubmitting(true);
+    setSubmitError(null);
+    finalizePerformanceScore(emp.employee_id, latestReviewId, decision, finalScore, data, note)
+      .then((saved) => {
+        setFinalized({
+          decision: saved.manager_decision,
+          final_score: Number(saved.final_score),
+          decided_at: saved.decided_at,
+        });
+        setEditing(false);
+      })
+      .catch((err) => setSubmitError(err.message))
+      .finally(() => setSubmitting(false));
+  }
 
   return (
     <div id="result-content">
@@ -166,50 +203,120 @@ function ResultContent({ data, onSelectReview, onBack }) {
           </p>
         </div>
         <div className="score-hero">
-          <div className="score-circle" style={{ borderColor: data.rating_color }}>
-            <span>{data.predicted_score}</span>
+          <div className="score-circle" style={{ borderColor: displayRating.color }}>
+            <span>{displayScore}</span>
             <small>/100</small>
           </div>
-          <p style={{ color: data.rating_color }}>{data.rating_label}</p>
+          <p style={{ color: displayRating.color }}>{displayRating.label}</p>
+          <p className="live-score-note">Recorded score</p>
+          {data.ai_predicted_score != null && (
+            <p className="live-score-note">
+              AI estimate: <strong>{data.ai_predicted_score}</strong>/100{" "}
+              <span className={`confidence-badge confidence-${data.ai_confidence}`}>
+                {data.ai_confidence} confidence
+              </span>{" "}
+              ({data.ai_real_feature_count}/{data.ai_total_feature_count} inputs real)
+            </p>
+          )}
         </div>
+      </div>
+
+      <div className="card" id="justification-card">
+        <h3 className="card-title">AI Justification</h3>
+        <p>{data.justification}</p>
+        {data.policy_citation && (
+          <p className="live-score-note">Policy reference: {data.policy_citation}</p>
+        )}
+
+        {finalized ? (
+          <p style={{ marginTop: "1rem" }}>
+            <strong>Finalized: {finalized.final_score}</strong> —{" "}
+            {finalized.decision === "accepted" ? "accepted as the AI estimate" : "edited by manager"}
+            {finalized.decision === "edited" && data.ai_predicted_score != null && (
+              <> (original AI estimate {data.ai_predicted_score})</>
+            )}
+            . This becomes the employee's current recorded score.
+          </p>
+        ) : editing ? (
+          <div style={{ marginTop: "1rem" }}>
+            <label>
+              Final score:{" "}
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+              />
+            </label>
+            <br />
+            <label style={{ display: "block", marginTop: "0.5rem" }}>
+              Note (optional):
+              <br />
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={{ width: "100%" }} />
+            </label>
+            {submitError && <p style={{ color: "#991b1b" }}>{submitError}</p>}
+            <button
+              className="btn-analyse"
+              disabled={submitting}
+              onClick={() => submitDecision("edited", parseFloat(editValue))}
+              style={{ marginTop: "0.5rem" }}
+            >
+              Save
+            </button>{" "}
+            <button className="btn-secondary" disabled={submitting} onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div style={{ marginTop: "1rem" }}>
+            {submitError && <p style={{ color: "#991b1b" }}>{submitError}</p>}
+            <button
+              className="btn-analyse"
+              disabled={submitting}
+              onClick={() => submitDecision("accepted", data.ai_predicted_score)}
+            >
+              Accept Score
+            </button>{" "}
+            <button className="btn-secondary" disabled={submitting} onClick={() => setEditing(true)}>
+              Edit Score
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="result-grid">
         <div className="card">
-          <h3 className="card-title">Score Breakdown</h3>
+          <h3 className="card-title">Score Signals</h3>
           <div className="cluster-list">
-            {CLUSTER_META.map((c) => {
-              const val = data.breakdown[c.key];
+            {SIGNAL_META.map(({ key, label }) => {
+              const val = data.score_signals?.[key];
               return (
-                <div className="cluster-row" key={c.key}>
-                  <span className="cluster-name">
-                    {c.name} <small>({c.weight})</small>
-                  </span>
-                  <div className="bar-wrap">
-                    <div
-                      className="bar"
-                      style={{ width: `${Math.min(val, 100)}%`, background: c.color }}
-                    />
-                  </div>
-                  <span className="cluster-val">{val}</span>
+                <div className="cluster-row" key={key}>
+                  <span className="cluster-name">{label}</span>
+                  <span className="cluster-val">{val != null ? val : "Not enough live data"}</span>
                 </div>
               );
             })}
           </div>
 
           <h3 className="card-title" style={{ marginTop: "1.5rem" }}>
-            Sub-scores (out of 10)
+            Review Dimensions (out of 10)
           </h3>
           <div className="subscore-grid">
-            {Object.entries(SUBSCORE_LABELS).map(([key, label]) => (
-              <div className="subscore-item" key={key}>
-                <span className="subscore-label">{label}</span>
-                <div className="subscore-bar-wrap">
-                  <div className="subscore-bar" style={{ width: `${data.sub_scores[key] * 10}%` }} />
+            {Object.entries(REVIEW_DIMENSION_LABELS).map(([key, label]) => {
+              const val = data.score_signals?.review_dimensions?.[key];
+              return (
+                <div className="subscore-item" key={key}>
+                  <span className="subscore-label">{label}</span>
+                  <div className="subscore-bar-wrap">
+                    <div className="subscore-bar" style={{ width: `${val != null ? val * 10 : 0}%` }} />
+                  </div>
+                  <span className="subscore-val">{val != null ? `${val}/10` : "—"}</span>
                 </div>
-                <span className="subscore-val">{data.sub_scores[key]}/10</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

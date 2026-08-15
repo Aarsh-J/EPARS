@@ -1,4 +1,5 @@
 import Sidebar from "./Sidebar.jsx";
+import ChatWidget from "./ChatWidget.jsx";
 
 export default function Layout({ title = "Dashboard", children }) {
   return (
@@ -15,6 +16,7 @@ export default function Layout({ title = "Dashboard", children }) {
         </header>
         <div className="content">{children}</div>
       </main>
+      <ChatWidget />
     </>
   );
 }
