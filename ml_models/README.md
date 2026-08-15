@@ -24,15 +24,24 @@ Two trained models, wired into the API by `modules/ml/`.
   `burnout_model_metadata.json`.
 - Feature engineering (symptom aggregation mean/max/std, ordinal encodings, task_assignments aggregation)
   recovered from `git show 9126e7e1:code/workload_preprocessing.py`.
-- **Known live-data gap:** 20 of the 36 raw `burnout_indicators` symptom columns the model was trained on
-  (`workload_pressure`, `work_life_conflict`, `job_demands`, `role_conflict`, `reported_stress_level`,
+- **Live-data gap — fixed.** 20 of the 36 raw `burnout_indicators` symptom columns the model was trained
+  on (`workload_pressure`, `work_life_conflict`, `job_demands`, `role_conflict`, `reported_stress_level`,
   `reported_fatigue_level`, `sleep_quality`, `physical_health_concerns`, `energy_level`, `engagement_score`,
   `motivation_level`, `sense_of_accomplishment`, `organizational_commitment`, `team_cohesion`,
   `workplace_relationships`, `isolation_feeling`, `coping_effectiveness`, `resource_adequacy`,
-  `work_recovery_ability`, `resilience_score`) do not exist in the current production schema — only in the
-  CSVs the model trained on. This includes the model's **top 3 most important features**
-  (`fatigue_enc_max` 19.5%, `stress_enc_max` 10.0%, `sleep_enc_std` 9.9% — ~40% of total importance
-  combined), which are therefore always imputed rather than real. `employees.communication_effectiveness`,
-  `employees.cross_functional_experience`, and `employees.mentoring_experience` are similarly missing.
-  The API surfaces a `confidence` flag and a `missing_features` list so the frontend can visibly warn users
-  that predictions are running on mostly-imputed top-weighted inputs.
+  `work_recovery_ability`, `resilience_score`) — including the model's **top 3 most important features**
+  (`fatigue_enc_max` 19.5%, `stress_enc_max` 10.0%, `sleep_enc_std` 9.9%) — originally didn't exist in the
+  production schema, only in the CSVs the model trained on. Root cause: `dataset_v2/burnout_indicators.csv`
+  (the actual generated dataset, tracked on the `preprocessor` branch) has always had these columns; the
+  `CREATE TABLE burnout_indicators` in `src/epars_agent/setup_database.py` simply never included them, so
+  they never made it into the live Postgres DB.
+
+  **Fixed via schema migration + backfill** (all 20 columns, plus `employees.communication_effectiveness`,
+  `employees.work_life_balance_score`, `employees.cross_functional_experience`,
+  `employees.mentoring_experience`): `ALTER TABLE ... ADD COLUMN` for each, then backfilled real values
+  from `dataset_v2/*.csv` matched by primary key. Verified ID overlap before backfilling: 100% for
+  `burnout_indicators`, ~47% for `employees` (the rest keep imputing — no matching source data exists for
+  the other ~53% of live employee rows, which is honest given they were never in this generated dataset).
+  `modules/ml/feature_specs.py` and `modules/ml/burnout_features.py` now source all 36 symptom columns and
+  all `employees.*` fields live instead of imputing them. `confidence` should now reflect genuine per-
+  employee data availability rather than being structurally `"low"` for everyone.

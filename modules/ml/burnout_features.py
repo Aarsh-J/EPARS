@@ -16,19 +16,27 @@ from db import get_connection
 from .feature_specs import (
     BURNOUT_EMP_COLS_LIVE,
     BURNOUT_EMP_STRESS_MAP,
+    BURNOUT_FATIGUE_MAP,
     BURNOUT_FEATURES,
     BURNOUT_PROD_MAP,
     BURNOUT_SENIORITY_MAP,
+    BURNOUT_SLEEP_MAP,
+    BURNOUT_STRESS_MAP,
     BURNOUT_SYMPTOM_COLS_LIVE,
     BURNOUT_TREND_MAP,
 )
 
-_LIVE_SYMPTOM_SQL_COLS = [c for c in BURNOUT_SYMPTOM_COLS_LIVE if c not in ("mental_supp", "trend_enc")]
+# These 5 need mapping/casting from a differently-named raw column rather
+# than a direct numeric SELECT — handled separately in assemble_burnout_features.
+_ENCODED_SYMPTOM_COLS = {"phys_health", "mental_supp", "stress_enc", "fatigue_enc", "sleep_enc", "trend_enc"}
+_LIVE_SYMPTOM_SQL_COLS = [c for c in BURNOUT_SYMPTOM_COLS_LIVE if c not in _ENCODED_SYMPTOM_COLS]
 
 
 def _fetch_burnout_rows(employee_id: str) -> list[dict]:
     sql = f"""
-        SELECT {", ".join(_LIVE_SYMPTOM_SQL_COLS)}, mental_health_support_needed, burnout_trend
+        SELECT {", ".join(_LIVE_SYMPTOM_SQL_COLS)}, physical_health_concerns,
+               mental_health_support_needed, reported_stress_level,
+               reported_fatigue_level, sleep_quality, burnout_trend
         FROM burnout_indicators
         WHERE employee_id = %s
     """
@@ -92,11 +100,35 @@ def assemble_burnout_features(employee_id: str):
             vector["mental_supp_max"] = max(mental_vals)
             vector["mental_supp_std"] = statistics.stdev(mental_vals) if len(mental_vals) > 1 else 0.0
 
+        phys_vals = [float(bool(r["physical_health_concerns"])) for r in rows if r.get("physical_health_concerns") is not None]
+        if phys_vals:
+            vector["phys_health_mean"] = statistics.mean(phys_vals)
+            vector["phys_health_max"] = max(phys_vals)
+            vector["phys_health_std"] = statistics.stdev(phys_vals) if len(phys_vals) > 1 else 0.0
+
         trend_vals = [BURNOUT_TREND_MAP[r["burnout_trend"]] for r in rows if r.get("burnout_trend") in BURNOUT_TREND_MAP]
         if trend_vals:
             vector["trend_enc_mean"] = statistics.mean(trend_vals)
             vector["trend_enc_max"] = max(trend_vals)
             vector["trend_enc_std"] = statistics.stdev(trend_vals) if len(trend_vals) > 1 else 0.0
+
+        stress_vals = [BURNOUT_STRESS_MAP[r["reported_stress_level"]] for r in rows if r.get("reported_stress_level") in BURNOUT_STRESS_MAP]
+        if stress_vals:
+            vector["stress_enc_mean"] = statistics.mean(stress_vals)
+            vector["stress_enc_max"] = max(stress_vals)
+            vector["stress_enc_std"] = statistics.stdev(stress_vals) if len(stress_vals) > 1 else 0.0
+
+        fatigue_vals = [BURNOUT_FATIGUE_MAP[r["reported_fatigue_level"]] for r in rows if r.get("reported_fatigue_level") in BURNOUT_FATIGUE_MAP]
+        if fatigue_vals:
+            vector["fatigue_enc_mean"] = statistics.mean(fatigue_vals)
+            vector["fatigue_enc_max"] = max(fatigue_vals)
+            vector["fatigue_enc_std"] = statistics.stdev(fatigue_vals) if len(fatigue_vals) > 1 else 0.0
+
+        sleep_vals = [BURNOUT_SLEEP_MAP[r["sleep_quality"]] for r in rows if r.get("sleep_quality") in BURNOUT_SLEEP_MAP]
+        if sleep_vals:
+            vector["sleep_enc_mean"] = statistics.mean(sleep_vals)
+            vector["sleep_enc_max"] = max(sleep_vals)
+            vector["sleep_enc_std"] = statistics.stdev(sleep_vals) if len(sleep_vals) > 1 else 0.0
 
     for name in BURNOUT_EMP_COLS_LIVE:
         if name == "is_available":

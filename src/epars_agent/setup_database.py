@@ -87,7 +87,13 @@ CREATE TABLE IF NOT EXISTS employees (
     successful_project_count     INTEGER,
     failed_project_count         INTEGER,
     created_at                   TIMESTAMP,
-    last_updated                 TIMESTAMP
+    last_updated                 TIMESTAMP,
+    communication_effectiveness  NUMERIC(6,2),
+    cross_functional_experience  BOOLEAN,
+    languages_known               TEXT,
+    mentoring_experience          BOOLEAN,
+    timezone                        VARCHAR(20),
+    work_life_balance_score          NUMERIC(6,2)
 )
 """,
 
@@ -128,7 +134,15 @@ CREATE TABLE IF NOT EXISTS projects (
     next_milestone_date     DATE,
     next_milestone_risk     NUMERIC(6,2),
     created_at              TIMESTAMP,
-    last_updated            TIMESTAMP
+    last_updated            TIMESTAMP,
+    business_value            VARCHAR(20),
+    client_id                  VARCHAR(20),
+    collaboration_tools         TEXT,
+    communication_frequency      VARCHAR(30),
+    customer_impact                VARCHAR(20),
+    documentation_quality           NUMERIC(6,2),
+    meeting_hours_per_week           NUMERIC(6,2),
+    strategic_importance              NUMERIC(6,2)
 )
 """,
 
@@ -172,7 +186,14 @@ CREATE TABLE IF NOT EXISTS tasks (
     requires_collaboration   BOOLEAN,
     team_size_required       INTEGER,
     created_at               TIMESTAMP,
-    last_updated             TIMESTAMP
+    last_updated             TIMESTAMP,
+    communication_frequency    VARCHAR(30),
+    has_subtasks                 BOOLEAN,
+    meeting_hours_required         NUMERIC(6,2),
+    related_tasks                    TEXT,
+    required_certifications            TEXT,
+    technical_complexity_score           NUMERIC(6,2),
+    technical_debt_added                   BOOLEAN
 )
 """,
 
@@ -203,7 +224,12 @@ CREATE TABLE IF NOT EXISTS task_assignments (
     efficiency_score             NUMERIC(6,2),
     assignment_satisfaction      INTEGER,
     created_at                   TIMESTAMP,
-    last_updated                 TIMESTAMP
+    last_updated                 TIMESTAMP,
+    employee_feedback              TEXT,
+    manager_feedback                 TEXT,
+    time_to_complete                   NUMERIC(10,2),
+    would_recommend_again                BOOLEAN,
+    google_event_id                        VARCHAR(200)
 )
 """,
 
@@ -238,7 +264,11 @@ CREATE TABLE IF NOT EXISTS schedules (
     is_remote                BOOLEAN,
     meeting_link             VARCHAR(200),
     created_at               TIMESTAMP,
-    last_updated             TIMESTAMP
+    last_updated             TIMESTAMP,
+    buffer_required             BOOLEAN,
+    has_conflict                  BOOLEAN,
+    timezone                        VARCHAR(20),
+    google_event_id                   VARCHAR(200)
 )
 """,
 
@@ -280,7 +310,21 @@ CREATE TABLE IF NOT EXISTS workload_history (
     special_circumstances    VARCHAR(100),
     out_of_office            BOOLEAN,
     worked_from              VARCHAR(50),
-    created_at               TIMESTAMP
+    created_at               TIMESTAMP,
+    chat_messages_sent         NUMERIC(10,2),
+    cognitive_load_estimate      NUMERIC(6,2),
+    emails_received                NUMERIC(10,2),
+    emails_sent                      NUMERIC(10,2),
+    engagement_score                   NUMERIC(6,2),
+    fatigue_level                        VARCHAR(20),
+    late_hours_indicator                   BOOLEAN,
+    month                                    VARCHAR(20),
+    multitasking_level                        VARCHAR(20),
+    regular_hours                               NUMERIC(6,2),
+    stress_score                                  NUMERIC(6,2),
+    task_density                                    NUMERIC(6,2),
+    work_life_balance_today                           NUMERIC(6,2),
+    year                                                 INTEGER
 )
 """,
 
@@ -317,7 +361,17 @@ CREATE TABLE IF NOT EXISTS team_formations (
     dissolution_date             DATE,
     dissolution_reason           TEXT,
     created_at                   TIMESTAMP,
-    last_updated                 TIMESTAMP
+    last_updated                 TIMESTAMP,
+    communication_compatibility    NUMERIC(6,2),
+    conflict_incidents               NUMERIC(6,2),
+    improvement_opportunities          NUMERIC(6,2),
+    lessons_learned                      TEXT,
+    team_cohesion_score                    NUMERIC(6,2),
+    team_efficiency_ratio                    NUMERIC(6,2),
+    team_feedback_summary                      TEXT,
+    team_productivity_score                      NUMERIC(6,2),
+    timezone_compatibility                         NUMERIC(6,2),
+    would_reform_team                                BOOLEAN
 )
 """,
 
@@ -351,7 +405,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     response_date        DATE,
     visibility           VARCHAR(50),
     created_at           TIMESTAMP,
-    last_updated         TIMESTAMP
+    last_updated         TIMESTAMP,
+    actionable             BOOLEAN,
+    follow_up_required       BOOLEAN,
+    innovation_rating          NUMERIC(6,2),
+    sentiment                    VARCHAR(20),
+    sentiment_score                 NUMERIC(6,2),
+    tone                              VARCHAR(20),
+    used_for_performance_review        BOOLEAN,
+    used_for_training                    BOOLEAN
 )
 """,
 
@@ -399,7 +461,20 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
     performance_rating              VARCHAR(50),
     promotion_readiness             VARCHAR(50),
     created_at                      TIMESTAMP,
-    last_updated                    TIMESTAMP
+    last_updated                    TIMESTAMP,
+    adaptability_score                NUMERIC(6,2),
+    bonus_recommendation                NUMERIC(10,2),
+    development_goals                     TEXT,
+    exceeded_expectations_areas             TEXT,
+    follow_up_required                        BOOLEAN,
+    innovation_score                            NUMERIC(6,2),
+    manager_comments                              TEXT,
+    next_review_date                                DATE,
+    reliability_score                                 NUMERIC(6,2),
+    salary_increase_recommended                         BOOLEAN,
+    training_areas                                        TEXT,
+    training_recommended                                    BOOLEAN,
+    utilization_rate                                          NUMERIC(6,2)
 )
 """,
 
@@ -435,7 +510,87 @@ CREATE TABLE IF NOT EXISTS burnout_indicators (
     last_intervention_date        DATE,
     intervention_effectiveness    NUMERIC(6,2),
     created_at                    TIMESTAMP,
-    last_updated                  TIMESTAMP
+    last_updated                  TIMESTAMP,
+    workload_pressure               NUMERIC(6,2),
+    work_life_conflict                NUMERIC(6,2),
+    job_demands                         NUMERIC(6,2),
+    role_conflict                         NUMERIC(6,2),
+    reported_stress_level                   VARCHAR(20),
+    reported_fatigue_level                    VARCHAR(20),
+    sleep_quality                               VARCHAR(20),
+    physical_health_concerns                      BOOLEAN,
+    energy_level                                    NUMERIC(6,2),
+    engagement_score                                  NUMERIC(6,2),
+    motivation_level                                    NUMERIC(6,2),
+    sense_of_accomplishment                               NUMERIC(6,2),
+    organizational_commitment                               NUMERIC(6,2),
+    team_cohesion                                             NUMERIC(6,2),
+    workplace_relationships                                     NUMERIC(6,2),
+    isolation_feeling                                             NUMERIC(6,2),
+    coping_effectiveness                                            NUMERIC(6,2),
+    resource_adequacy                                                 NUMERIC(6,2),
+    work_recovery_ability                                               NUMERIC(6,2),
+    resilience_score                                                      NUMERIC(6,2)
+)
+""",
+
+# ── 11. performance_ai_evaluations ─────────────────────────────────────────────
+# One row per Analyse-and-decide event: the AI's score + justification, and the
+# manager's accept/edit decision. performance_reviews itself is never written to
+# (keeps model training data clean, avoids a self-reinforcing feedback loop).
+"""
+CREATE TABLE IF NOT EXISTS performance_ai_evaluations (
+    evaluation_id        VARCHAR(20)   PRIMARY KEY,
+    employee_id           VARCHAR(20),
+    review_id              VARCHAR(20),
+    ai_predicted_score      NUMERIC(6,2),
+    ai_confidence            VARCHAR(20),
+    ai_justification          TEXT,
+    policy_citation            VARCHAR(100),
+    manager_decision            VARCHAR(20),
+    final_score                  NUMERIC(6,2),
+    manager_note                  TEXT,
+    decided_at                     TIMESTAMP,
+    created_at                      TIMESTAMP
+)
+""",
+
+# ── 12. burnout_ai_assessments ─────────────────────────────────────────────────
+# One row per Analyse click's confidence-gated burnout assessment. See
+# modules/ml/reassignment.py for the high/medium/low confidence policy.
+"""
+CREATE TABLE IF NOT EXISTS burnout_ai_assessments (
+    assessment_id      VARCHAR(20)  PRIMARY KEY,
+    employee_id          VARCHAR(20),
+    ai_predicted_class     VARCHAR(20),
+    ai_probabilities         TEXT,
+    confidence                 VARCHAR(20),
+    justification                TEXT,
+    status                          VARCHAR(20),
+    reviewed_at                       TIMESTAMP,
+    created_at                          TIMESTAMP
+)
+""",
+
+# ── 13. task_reassignment_recommendations ──────────────────────────────────────
+# One row per per-task LLM decision (reassign/reschedule/none), linked to the
+# assessment that triggered it. manager_decision stays NULL until the manager
+# confirms or rejects; only "confirmed" triggers real execution (see
+# modules/ml/reassignment.py::execute_recommendation).
+"""
+CREATE TABLE IF NOT EXISTS task_reassignment_recommendations (
+    recommendation_id    VARCHAR(20)  PRIMARY KEY,
+    assessment_id           VARCHAR(20),
+    employee_id                VARCHAR(20),
+    task_id                      VARCHAR(20),
+    action                          VARCHAR(20),
+    target_employee_id                VARCHAR(20),
+    new_start_time                       TIMESTAMP,
+    new_end_time                            TIMESTAMP,
+    reasoning                                  TEXT,
+    manager_decision                              VARCHAR(20),
+    executed_at                                      TIMESTAMP,
+    created_at                                          TIMESTAMP
 )
 """,
 

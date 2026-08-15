@@ -125,13 +125,14 @@ Backed by: `get_employee_profile()` in `tools.py` plus live model inference via
 }
 ```
 
-**⚠️ Known data gap (see `ml_models/README.md`):** 20 of the 36 raw `burnout_indicators`
-symptom columns this model trained on — including its top 3 most-weighted features
-(`fatigue_enc_max`, `stress_enc_max`, `sleep_enc_std`, ~40% combined importance) — aren't
-tracked in the live schema, so `confidence` is `"low"` for essentially every employee today.
-The frontend surfaces this prominently rather than presenting predictions as authoritative;
-treat `stored_score`/`stored_category` (the DB-computed assessment) as more reliable until
-those columns are captured.
+**Update:** the 20 raw `burnout_indicators` symptom columns this model trained on — including
+its top 3 most-weighted features (`fatigue_enc_max`, `stress_enc_max`, `sleep_enc_std`, ~40%
+combined importance) — that were previously missing from the live schema (see
+`ml_models/README.md`) have been added and backfilled from `dataset_v2/*.csv` (the same
+generated dataset the model trained on, verified by real `employee_id` overlap before
+backfilling). `confidence` should now reflect genuine data availability per employee rather
+than being structurally `"low"` for everyone. `stored_score`/`stored_category` remain useful
+as an independent point of comparison, not because the live prediction is untrustworthy.
 
 ## `POST /api/agent/query`
 

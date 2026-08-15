@@ -54,9 +54,9 @@ pipeline fill them with its fitted training median — the "correct" way to hand
 for this particular model.
 
 `confidence` is derived from `missing_top_features`: if the *combined importance* of missing
-top-weighted features is ≥30% it's `low`, ≥10% `medium`, else `high`. In practice this is
-`low` for nearly every employee today, because the model's top 3 features by importance
-(`fatigue_enc_max` 19.5%, `stress_enc_max` 10.0%, `sleep_enc_std` 9.9%) need raw
-`burnout_indicators` columns (`reported_fatigue_level`, `reported_stress_level`,
-`sleep_quality`) that don't exist in the live schema — see `ml_models/README.md` for the full
-list of 20 missing symptom columns.
+top-weighted features is ≥30% it's `low`, ≥10% `medium`, else `high`. The 20 raw
+`burnout_indicators` columns this depended on (including the top 3: `fatigue_enc_max` 19.5%,
+`stress_enc_max` 10.0%, `sleep_enc_std` 9.9%) were originally missing from the live schema but
+have since been added and backfilled from `dataset_v2/burnout_indicators.csv` — see
+`ml_models/README.md` for the migration details. `confidence` now varies genuinely by employee
+based on real data completeness rather than being structurally `"low"` across the board.
