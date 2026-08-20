@@ -97,3 +97,5 @@ For every employee whose latest WBP burnout score is **≥ 0.70**, it:
 | 10 | `cancel_calendar_event` | **WRITES** — deletes a calendar event and clears `google_event_id` | task_assignments, Google Calendar |
 
 Tools 1–5 are **read-only**. Tools 6–10 **write to the database and/or Google Calendar**.
+
+### NOTE: The new model has limited tokens per day, DO NOT WASTE IT on unnecessary tests 
