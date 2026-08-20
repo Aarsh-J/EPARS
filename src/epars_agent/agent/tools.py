@@ -250,8 +250,15 @@ def find_available_employees(required_skills: str, required_role: str = "", requ
     skill_params = []
     for skill in skill_list:
         skill_params.extend([f"%{skill}%", f"%{skill}%"])
-    role_clause     = "AND role ILIKE %s"         if required_role      else ""
-    seniority_clause= "AND seniority_level = %s"  if required_seniority else ""
+    # NOTE: role is intentionally NOT used as a hard SQL filter. Job titles in this
+    # dataset are distinct non-overlapping strings (e.g. "Software Engineer" vs
+    # "Developer" vs "Team Lead"), so an ILIKE substring match on a role like
+    # "Developer" (inferred from a generic query like "Python developer") would
+    # silently exclude qualified candidates whose title just happens to differ.
+    # Skills + seniority + availability + burnout are the real qualification
+    # signals; role is returned in the result set for the LLM to reason about,
+    # not used to gate candidates out.
+    seniority_clause = "AND seniority_level = %s" if required_seniority else ""
     sql = f"""
         SELECT
             e.employee_id,
@@ -272,14 +279,11 @@ def find_available_employees(required_skills: str, required_role: str = "", requ
         WHERE e.is_available = TRUE
           AND e.burnout_risk_score < 70
           AND ({skill_conditions})
-          {role_clause}
           {seniority_clause}
         ORDER BY e.historical_performance_score DESC
         LIMIT %s
     """
     params = skill_params
-    if required_role:
-        params.append(f"%{required_role}%")
     if required_seniority:
         params.append(required_seniority)
     params.append(limit)
