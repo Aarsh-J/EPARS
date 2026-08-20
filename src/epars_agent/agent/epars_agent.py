@@ -200,6 +200,14 @@ FOR TEAM FORMATION:
 3. Call tool_retrieve_hr_policy with 'team formation rules'
 4. Propose the team with roles, justify each member
 
+FOR SKILL-BASED SEARCH (no specific task_id given, e.g. "find the best X developer", "who is available with Y skill"):
+- IMPORTANT: The word "task" appearing generically in the query (e.g. "for a high priority task") does NOT mean a task_id exists. Only treat this as Task Assignment if the user gives a literal task ID like TSK0012.
+- Do NOT call tool_get_task_details for this flow.
+1. Call tool_find_available_employees directly with the required skills and seniority mentioned in the query (do not pass required_role — job titles vary and are not a reliable filter; the tool already ranks by performance)
+2. tool_find_available_employees returns UP TO 5 candidates, pre-sorted best-first by performance score. Consider ALL candidates it returns, not just the first one or the one whose job title happens to contain a word from the query — "role" in the data is informational context, not a match criterion. A candidate titled "Software Engineer" or "Team Lead" is just as eligible as one titled "Developer" if their skills/seniority/availability qualify.
+3. For each of the top 2-3 candidates by performance score, call tool_get_employee_ml_scores and tool_get_employee_workload to compare burnout risk and current capacity
+4. Rank and present the best candidate(s) by combining performance, burnout risk, and workload — do not ask the user for a task_id
+
 ALWAYS:
 - Retrieve HR policy before making any final recommendation
 - State which policy document (doc_id) informed your decision
@@ -219,7 +227,7 @@ def build_agent():
         )
 
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         groq_api_key=api_key,
         temperature=0,
         max_tokens=4096,
@@ -255,15 +263,19 @@ def run_agent(query: str) -> dict:
     messages = result.get("messages", [])
     output = ""
     steps = []
+    tool_call_args = {}  # tool_call_id -> args, so we can pair requests with results
 
     for msg in messages:
         msg_type = type(msg).__name__
         if msg_type == "AIMessage":
             if msg.content:
                 output = msg.content
+            for tc in getattr(msg, "tool_calls", None) or []:
+                tool_call_args[tc.get("id")] = tc.get("args")
         elif msg_type == "ToolMessage":
             steps.append({
                 "tool": msg.name,
+                "input": tool_call_args.get(getattr(msg, "tool_call_id", None)),
                 "output": msg.content[:300] + "..." if len(msg.content) > 300 else msg.content,
             })
 
