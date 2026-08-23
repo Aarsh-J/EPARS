@@ -4,4 +4,8 @@ dataset_v1/*
 code/Dataset Generator/__pycache__/*
 code/Model4_TeamFormation/FT2/*
 code/Model4_TeamFormation/FT3_v1/*
+code/Model3_TaskAssignment/artifacts/decision_tree_*.joblib
+code/Model3_TaskAssignment/artifacts/gradient_boosting_*.joblib
+code/Model3_TaskAssignment/artifacts/random_forest_*.joblib
+code/Model3_TaskAssignment/artifacts/xgboost_*.joblib
 **/__pycache__/*
