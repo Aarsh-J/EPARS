@@ -7,10 +7,12 @@ Reads 7 raw CSVs, merges, cleans, encodes, and engineers features.
 Output: artifacts/master_preprocessed.csv + artifacts/label_encoders.joblib
 
 Run:  python preprocessing.py
-Next: python make_splits.py
+Next: python train.py
 """
 
 import os
+import sys
+import argparse
 import warnings
 import numpy as np
 import pandas as pd
@@ -22,10 +24,49 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────────────────────
 # 0. Paths
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.dirname(__file__)
-DATA_DIR   = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "dataset_v2"))
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "artifacts")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+REQUIRED_RAW_FILES = [
+    "tasks.csv", "task_assignments.csv", "employees.csv",
+    "burnout_indicators.csv", "performance_reviews.csv",
+    "schedules.csv", "projects.csv",
+]
+
+
+def resolve_data_dir(cli_arg: str | None = None) -> str:
+    """
+    Find the folder containing the 7 raw CSVs.
+    Priority: --data-dir CLI flag > EPARS_DATA_DIR env var > a few common
+    relative locations next to this script. Raises with a clear message
+    if none of them actually contain the required files.
+    """
+    candidates = []
+    if cli_arg:
+        candidates.append(cli_arg)
+    if os.environ.get("EPARS_DATA_DIR"):
+        candidates.append(os.environ["EPARS_DATA_DIR"])
+    candidates += [
+        os.path.join(BASE_DIR, "dataset"),
+        os.path.join(BASE_DIR, "data"),
+        os.path.join(BASE_DIR, "..", "dataset"),
+        os.path.join(BASE_DIR, "..", "..", "dataset"),
+        os.path.join(BASE_DIR, "..", "dataset_v2"),
+        os.path.join(BASE_DIR, "..", "..", "dataset_v2"),
+    ]
+
+    for c in candidates:
+        c_abs = os.path.abspath(c)
+        if all(os.path.isfile(os.path.join(c_abs, f)) for f in REQUIRED_RAW_FILES):
+            return c_abs
+
+    checked = "\n".join(f"  - {os.path.abspath(c)}" for c in candidates)
+    raise FileNotFoundError(
+        "Could not find the 7 raw CSVs. Checked:\n" + checked +
+        "\n\nPass the correct folder with:  python preprocessing.py --data-dir /path/to/csvs"
+        "\nor set the EPARS_DATA_DIR environment variable."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +161,7 @@ LABEL_ENCODERS: dict[str, LabelEncoder] = {}
 # 2. LOADERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_raw(data_dir: str = DATA_DIR) -> dict:
+def load_raw(data_dir: str) -> dict:
     files = {
         "tasks":       "tasks.csv",
         "assignments": "task_assignments.csv",
@@ -163,7 +204,10 @@ def clean_tasks(df: pd.DataFrame) -> pd.DataFrame:
         df["required_skills"].fillna("").str.split(",")
         .apply(lambda x: len([v for v in x if v.strip()]))
     )
-    df["has_cert_req"] = df["required_certifications"].notna().astype(int)
+    if "required_certifications" in df.columns:
+        df["has_cert_req"] = df["required_certifications"].notna().astype(int)
+    else:
+        df["has_cert_req"] = 0
 
     df["delay_risk_score"] = df["delay_risk_score"].fillna(
         df["is_overdue"].astype(float) * 50
@@ -179,6 +223,7 @@ def clean_tasks(df: pd.DataFrame) -> pd.DataFrame:
         "rework_count", "risk_level", "business_impact",
         "requires_collaboration", "has_subtasks", "technical_debt_added",
         "delay_risk_score",
+        "required_skills",   # kept through to build_master for real_skill_match; dropped after
     ]
     return df[[c for c in keep if c in df.columns]]
 
@@ -198,10 +243,29 @@ def clean_assignments(df: pd.DataFrame) -> pd.DataFrame:
         "assignment_method", "acceptance_status",
         "skill_match_score", "availability_match_score",
         "workload_compatibility_score", "experience_match_score",
+        "team_compatibility_score",
         "reassignment_count",
         "assignment_success",
     ]
     return df[[c for c in keep if c in df.columns]]
+
+
+def compute_skill_match(task_skills: str, emp_skills: str) -> float:
+    """
+    Real skill overlap: fraction of a task's required_skills that an
+    employee's primary_skills covers, as a 0-100 score. Unlike
+    skill_match_score (which only exists for historical assignments in
+    task_assignments.csv), this is computed straight from raw text
+    columns that exist for EVERY task and EVERY employee — so it's the
+    one feature in this pipeline that can score a task/employee pair
+    that has never actually been assigned together. Useful for Layer 3
+    scoring of novel candidates.
+    """
+    required  = set(s.strip().lower() for s in str(task_skills).split(",") if s.strip())
+    available = set(s.strip().lower() for s in str(emp_skills).split(",") if s.strip())
+    if not required:
+        return 100.0
+    return round(len(required & available) / len(required) * 100, 2)
 
 
 def clean_employees(df: pd.DataFrame) -> pd.DataFrame:
@@ -218,7 +282,9 @@ def clean_employees(df: pd.DataFrame) -> pd.DataFrame:
         "historical_performance_score", "average_task_completion_rate",
         "collaboration_score", "burnout_risk_score",
         "work_life_balance_score", "recent_overtime_hours",
+        "weekly_capacity_hours",
         "n_primary_skills",
+        "primary_skills",   # kept through to build_master for real_skill_match; dropped after
     ]
     return df[[c for c in keep if c in df.columns]]
 
@@ -245,25 +311,50 @@ def aggregate_reviews(df: pd.DataFrame) -> pd.DataFrame:
     """Average of latest 2 reviews per employee."""
     df = df.copy()
     df["review_date"] = pd.to_datetime(df["review_date"], errors="coerce")
-    return (
+
+    # (output_col -> source_col). Built dynamically so a source column
+    # that doesn't exist in a given dataset version is skipped instead
+    # of crashing the whole pipeline.
+    wanted = {
+        "avg_perf_score":   "overall_performance_score",
+        "avg_quality":      "quality_of_work_score",
+        "avg_productivity": "productivity_score",
+        "avg_timeliness":   "time_management_score",
+        "avg_reliability":  "reliability_score",
+        "on_time_rate":     "on_time_delivery_rate",
+        "utilization_rate": "utilization_rate",
+    }
+    agg_map = {out: (src, "mean") for out, src in wanted.items() if src in df.columns}
+    missing = [src for src in wanted.values() if src not in df.columns]
+    if missing:
+        print(f"    ⚠ performance_reviews.csv missing columns, skipped: {missing}")
+
+    result = (
         df.sort_values("review_date", ascending=False)
           .groupby("employee_id").head(2)
           .groupby("employee_id")
-          .agg(
-              avg_perf_score   =("overall_performance_score", "mean"),
-              avg_quality      =("quality_of_work_score", "mean"),
-              avg_productivity =("productivity_score", "mean"),
-              avg_timeliness   =("time_management_score", "mean"),
-              avg_reliability  =("reliability_score", "mean"),
-              on_time_rate     =("on_time_delivery_rate", "mean"),
-              utilization_rate =("utilization_rate", "mean"),
-          )
+          .agg(**agg_map)
           .reset_index()
     )
+    return result
 
 
 def aggregate_schedules(df: pd.DataFrame) -> pd.DataFrame:
     """Schedule load metrics per employee."""
+    df = df.copy()
+
+    # has_conflict doesn't exist in this dataset version; derive a
+    # boolean from conflict_with_ids (non-empty => conflict) instead
+    # of crashing on the missing column.
+    if "has_conflict" not in df.columns:
+        if "conflict_with_ids" in df.columns:
+            df["has_conflict"] = (
+                df["conflict_with_ids"].notna()
+                & (df["conflict_with_ids"].astype(str).str.strip() != "")
+            ).astype(int)
+        else:
+            df["has_conflict"] = 0
+
     return (
         df.groupby("employee_id")
           .agg(
@@ -318,6 +409,13 @@ def build_master(dfs: dict) -> pd.DataFrame:
     master = assignments.merge(tasks_no_proj, on="task_id", how="inner")
     master = master.merge(emp_full, on="employee_id", how="left")
     master = master.merge(projects, on="project_id", how="left")
+
+    master["real_skill_match"] = master.apply(
+        lambda row: compute_skill_match(
+            row.get("required_skills", ""),
+            row.get("primary_skills", "")
+        ), axis=1
+    )
 
     print(f"\n  Master shape after join: {master.shape}")
     return master
@@ -398,30 +496,47 @@ def encode_categoricals(df: pd.DataFrame, fit: bool = True) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def engineer_interactions(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Runs BEFORE drop_unnecessary / clean_nulls, so source columns may still
+    contain NaNs from the left-joins (e.g. an employee with no burnout
+    record). `col()` returns the real column with NaNs filled by `default`
+    if present, or a full default-valued Series if the column is absent
+    entirely — either way, arithmetic below never silently zeroes out.
+    """
     df = df.copy()
 
+    def col(name: str, default: float) -> pd.Series:
+        if name in df.columns:
+            return df[name].fillna(default)
+        return pd.Series(default, index=df.index)
+
     df["skill_gap"] = (
-        df.get("n_required_skills", 0) - df.get("n_primary_skills", 0)
+        col("n_required_skills", 0) - col("n_primary_skills", 0)
     ).clip(lower=0)
 
     df["emp_fitness"] = (
-        df.get("skill_match_score", 50)            * 0.30 +
-        df.get("experience_match_score", 50)       * 0.25 +
-        df.get("availability_match_score", 50)     * 0.20 +
-        df.get("workload_compatibility_score", 50) * 0.15 +
-        df.get("team_compatibility_score", 50)     * 0.10
+        col("skill_match_score", 50)            * 0.30 +
+        col("experience_match_score", 50)       * 0.25 +
+        col("availability_match_score", 50)     * 0.20 +
+        col("workload_compatibility_score", 50) * 0.15 +
+        col("team_compatibility_score", 50)     * 0.10
     )
 
-    buf = df.get("buffer_days", pd.Series(np.ones(len(df)), index=df.index)).replace(0, 1)
-    df["urgency_ratio"] = (df.get("days_overdue", 0) / buf).clip(-10, 10)
+    buf = col("buffer_days", 1).replace(0, 1)
+    df["urgency_ratio"] = (col("days_overdue", 0) / buf).clip(-10, 10)
 
     df["health_risk"] = (
-        df.get("burnout_risk_score", 0)   * 0.5 +
-        df.get("overall_burnout_risk", 0) * 0.3 +
-        df.get("predicted_burnout_30days", 0) * 0.2
+        col("burnout_risk_score", 0)       * 0.5 +
+        col("overall_burnout_risk", 0)     * 0.3 +
+        col("predicted_burnout_30days", 0) * 0.2
     )
 
-    df["schedule_load_ratio"] = pd.Series(0.0, index=df.index)
+    # Real employee schedule load: total scheduled hours (from schedules.csv,
+    # aggregated per employee) relative to their weekly capacity (from
+    # employees.csv). Was previously hard-coded to 0.0 for every row.
+    scheduled_hours = col("total_scheduled_hours", 0)
+    capacity_hours = col("weekly_capacity_hours", 40).replace(0, 40)
+    df["schedule_load_ratio"] = (scheduled_hours / capacity_hours).clip(0, 10)
 
     return df
 
@@ -430,7 +545,7 @@ def engineer_interactions(df: pd.DataFrame) -> pd.DataFrame:
 # 9. MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_preprocessing(data_dir: str = DATA_DIR, output_dir: str = OUTPUT_DIR):
+def run_preprocessing(data_dir: str, output_dir: str = OUTPUT_DIR):
     print("\n" + "="*70)
     print("  TASK SCHEDULING & WORKLOAD OPTIMIZATION — PREPROCESSING")
     print("="*70)
@@ -441,17 +556,25 @@ def run_preprocessing(data_dir: str = DATA_DIR, output_dir: str = OUTPUT_DIR):
     print("\n[2] Building master DataFrame …")
     master = build_master(dfs)
 
-    print("\n[3] Dropping unnecessary columns …")
+    # NOTE: interaction features are engineered BEFORE columns are dropped.
+    # emp_fitness, health_risk, and schedule_load_ratio all depend on raw
+    # source columns (team_compatibility_score, overall_burnout_risk,
+    # predicted_burnout_30days, weekly_capacity_hours, total_scheduled_hours)
+    # that are intentionally dropped afterwards for being noisy/redundant
+    # as standalone features. Engineering first means those engineered
+    # features carry real signal instead of silently defaulting to
+    # constants once their inputs are gone.
+    print("\n[3] Engineering interaction features …")
+    master = engineer_interactions(master)
+
+    print("\n[4] Dropping unnecessary columns …")
     master = drop_unnecessary(master)
 
-    print("\n[4] Cleaning nulls …")
+    print("\n[5] Cleaning nulls …")
     master = clean_nulls(master)
 
-    print("\n[5] Encoding categoricals …")
+    print("\n[6] Encoding categoricals …")
     master = encode_categoricals(master, fit=True)
-
-    print("\n[6] Engineering interaction features …")
-    master = engineer_interactions(master)
 
     assert master.isnull().sum().sum() == 0, "Nulls found after interaction engineering!"
 
@@ -466,9 +589,19 @@ def run_preprocessing(data_dir: str = DATA_DIR, output_dir: str = OUTPUT_DIR):
     print(f"  Saved label encoders → {le_path}")
 
     print("\n" + "="*70)
-    print("  PREPROCESSING COMPLETE — run make_splits.py next")
+    print("  PREPROCESSING COMPLETE — run train.py next")
     print("="*70)
 
 
 if __name__ == "__main__":
-    run_preprocessing()
+    parser = argparse.ArgumentParser(description="EPARS Module 3 preprocessing")
+    parser.add_argument(
+        "--data-dir", default=None,
+        help="Folder containing the 7 raw CSVs (tasks.csv, task_assignments.csv, "
+             "employees.csv, burnout_indicators.csv, performance_reviews.csv, "
+             "schedules.csv, projects.csv). Falls back to EPARS_DATA_DIR env "
+             "var or a few common relative locations if omitted."
+    )
+    args = parser.parse_args()
+    resolved_dir = resolve_data_dir(args.data_dir)
+    run_preprocessing(data_dir=resolved_dir)
