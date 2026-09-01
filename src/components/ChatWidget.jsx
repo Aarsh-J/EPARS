@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { queryAgent } from "../api/client.js";
 
 export default function ChatWidget() {
@@ -71,7 +73,13 @@ export default function ChatWidget() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`chat-message ${m.role}${m.error ? " error" : ""}`}>
-                <div className="chat-bubble-text">{m.text}</div>
+                <div className="chat-bubble-text">
+                  {m.role === "assistant" ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                  ) : (
+                    m.text
+                  )}
+                </div>
                 {m.steps && m.steps.length > 0 && (
                   <details className="chat-steps">
                     <summary>What I did ({m.steps.length} step{m.steps.length > 1 ? "s" : ""})</summary>
