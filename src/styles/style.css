@@ -399,6 +399,40 @@ body {
 .confidence-badge.confidence-medium { background: #fef3c7; color: #92400e; }
 .confidence-badge.confidence-low { background: #fee2e2; color: #991b1b; }
 
+.status-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.status-badge.status-pending { background: #fef3c7; color: #92400e; }
+.status-badge.status-recorded { background: #dbeafe; color: #1e40af; }
+.status-badge.status-dismissed { background: #f1f5f9; color: #64748b; }
+.status-badge.status-informational { background: #e0e7ff; color: #3730a3; }
+
+.score-compare {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  text-align: left;
+}
+.score-compare-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+.score-compare-label { color: #64748b; }
+.score-compare-val { font-weight: 600; color: #334155; }
+.score-compare-val.score-compare-new { color: #1e40af; }
+.score-delta-up { color: #065f46; font-weight: 600; }
+.score-delta-down { color: #991b1b; font-weight: 600; }
+
 .result-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

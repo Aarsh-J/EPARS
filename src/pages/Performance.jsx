@@ -241,17 +241,33 @@ function ResultContent({ data, onSelectReview, onBack }) {
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
-  const [finalized, setFinalized] = useState(data.last_decision || null);
+  // Decision made on THIS run's AI estimate, not history — kept separate from
+  // data.last_decision so re-running analysis always re-opens Accept/Edit,
+  // even for an employee with a prior approved score.
+  const [sessionDecision, setSessionDecision] = useState(null);
+  const priorDecision = data.last_decision || null;
 
-  const displayScore = finalized ? finalized.final_score : data.recorded_score;
-  const displayRating = finalized ? ratingFromScore(finalized.final_score) : { label: data.rating_label, color: data.rating_color };
+  const hasAiEstimate = data.ai_predicted_score != null;
+  // Until a manager finalizes this run's AI estimate, the circle leads with the
+  // new estimate (clearly marked pending) rather than the stale recorded score.
+  const displayScore = sessionDecision
+    ? sessionDecision.final_score
+    : hasAiEstimate
+    ? data.ai_predicted_score
+    : data.recorded_score;
+  const displayRating = sessionDecision
+    ? ratingFromScore(sessionDecision.final_score)
+    : hasAiEstimate
+    ? ratingFromScore(data.ai_predicted_score)
+    : { label: data.rating_label, color: data.rating_color };
+  const delta = hasAiEstimate && data.recorded_score != null ? data.ai_predicted_score - data.recorded_score : null;
 
   function submitDecision(decision, finalScore) {
     setSubmitting(true);
     setSubmitError(null);
     finalizePerformanceScore(emp.employee_id, latestReviewId, decision, finalScore, data, note)
       .then((saved) => {
-        setFinalized({
+        setSessionDecision({
           decision: saved.manager_decision,
           final_score: Number(saved.final_score),
           decided_at: saved.decided_at,
@@ -279,15 +295,42 @@ function ResultContent({ data, onSelectReview, onBack }) {
             <small>/100</small>
           </div>
           <p style={{ color: displayRating.color }}>{displayRating.label}</p>
-          <p className="live-score-note">Recorded score</p>
-          {data.ai_predicted_score != null && (
-            <p className="live-score-note">
-              AI estimate: <strong>{data.ai_predicted_score}</strong>/100{" "}
-              <span className={`confidence-badge confidence-${data.ai_confidence}`}>
-                {data.ai_confidence} confidence
-              </span>{" "}
-              ({data.ai_real_feature_count}/{data.ai_total_feature_count} inputs real)
-            </p>
+          {sessionDecision ? (
+            <span className="status-badge status-recorded">
+              {sessionDecision.decision === "edited" ? "Recorded · manager-edited" : "Recorded · manager-approved"}
+            </span>
+          ) : hasAiEstimate ? (
+            <span className="status-badge status-pending">Pending manager review</span>
+          ) : (
+            <span className="status-badge status-recorded">Recorded score</span>
+          )}
+
+          {hasAiEstimate && (
+            <div className="score-compare">
+              <div className="score-compare-row">
+                <span className="score-compare-label">Old recorded score</span>
+                <span className="score-compare-val">{data.recorded_score ?? "—"}</span>
+              </div>
+              <div className="score-compare-row">
+                <span className="score-compare-label">New AI estimate</span>
+                <span className="score-compare-val score-compare-new">
+                  {data.ai_predicted_score}
+                  {delta != null && (
+                    <span className={delta >= 0 ? "score-delta-up" : "score-delta-down"}>
+                      {" "}
+                      ({delta >= 0 ? "+" : ""}
+                      {delta.toFixed(1)})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <p className="live-score-note">
+                <span className={`confidence-badge confidence-${data.ai_confidence}`}>
+                  {data.ai_confidence} confidence
+                </span>{" "}
+                ({data.ai_real_feature_count}/{data.ai_total_feature_count} inputs real)
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -299,14 +342,15 @@ function ResultContent({ data, onSelectReview, onBack }) {
           <p className="live-score-note">Policy reference: {data.policy_citation}</p>
         )}
 
-        {finalized ? (
+        {sessionDecision ? (
           <p style={{ marginTop: "1rem" }}>
-            <strong>Finalized: {finalized.final_score}</strong> —{" "}
-            {finalized.decision === "accepted" ? "accepted as the AI estimate" : "edited by manager"}
-            {finalized.decision === "edited" && data.ai_predicted_score != null && (
+            <strong>Finalized: {sessionDecision.final_score}</strong> —{" "}
+            {sessionDecision.decision === "accepted" ? "accepted as the AI estimate" : "edited by manager"}
+            {sessionDecision.decision === "edited" && data.ai_predicted_score != null && (
               <> (original AI estimate {data.ai_predicted_score})</>
             )}
-            . This becomes the employee's current recorded score.
+            . Old recorded score was {data.recorded_score ?? "—"}; {sessionDecision.final_score} is now the
+            employee's current recorded score.
           </p>
         ) : editing ? (
           <div style={{ marginTop: "1rem" }}>
@@ -342,6 +386,14 @@ function ResultContent({ data, onSelectReview, onBack }) {
           </div>
         ) : (
           <div style={{ marginTop: "1rem" }}>
+            {priorDecision && (
+              <p className="live-score-note" style={{ marginBottom: "0.5rem" }}>
+                Previously {priorDecision.decision === "edited" ? "edited to" : "approved at"}{" "}
+                <strong>{priorDecision.final_score}</strong>
+                {priorDecision.decided_at ? ` on ${priorDecision.decided_at.slice(0, 10)}` : ""}. This is a new
+                AI estimate from the latest data — review it below.
+              </p>
+            )}
             {submitError && <p style={{ color: "#991b1b" }}>{submitError}</p>}
             <button
               className="btn-analyse"

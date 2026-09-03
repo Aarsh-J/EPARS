@@ -309,10 +309,36 @@ function ResultContent({ data, onBack }) {
             </span>{" "}
             ({data.real_feature_count}/{data.total_feature_count} inputs real)
           </p>
+          {status === "applied" && <span className="status-badge status-recorded">Auto-applied · recorded</span>}
+          {status === "verified" && <span className="status-badge status-recorded">Verified · recorded</span>}
+          {status === "pending_review" && !dismissed && (
+            <span className="status-badge status-pending">Pending manager review</span>
+          )}
+          {status === "pending_review" && dismissed && (
+            <span className="status-badge status-dismissed">Dismissed · not recorded</span>
+          )}
+          {status === "informational" && (
+            <span className="status-badge status-informational">Informational only</span>
+          )}
+
           {data.stored_category && (
-            <p className="live-score-note">
-              Stored assessment: <strong>{data.stored_category}</strong> ({data.stored_score})
-            </p>
+            <div className="score-compare">
+              <div className="score-compare-row">
+                <span className="score-compare-label">Old stored assessment</span>
+                <span className="score-compare-val">
+                  {data.stored_category} {data.stored_score != null && `(${data.stored_score})`}
+                </span>
+              </div>
+              <div className="score-compare-row">
+                <span className="score-compare-label">New AI prediction</span>
+                <span className="score-compare-val score-compare-new">
+                  {data.predicted_class}
+                  {data.stored_category && data.stored_category !== data.predicted_class && (
+                    <span className="score-delta-up"> (changed)</span>
+                  )}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       </div>
