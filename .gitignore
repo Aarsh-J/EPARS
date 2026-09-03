@@ -8,3 +8,6 @@ code/Model4_TeamFormation/FT3_v1/*
 venv
 .env
 sa_key.json
+*.log
+uvicorn_log.txt
+uvicorn_run.log
