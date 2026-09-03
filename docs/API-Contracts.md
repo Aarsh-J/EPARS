@@ -41,7 +41,9 @@ historical review — currently always returns the latest.)
 
 Backed by: `get_employee_profile()` + `get_employee_ml_scores()` in
 `src/epars_agent/agent/tools.py`, plus a review-history query in
-`modules/performance/routes.py::_review_history`.
+`modules/performance/routes.py::_review_history`, plus live model inference via
+`modules/ml/predict.py::predict_performance` (see `docs/performance_scoring.md` and
+`ml_models/README.md` for how that's computed).
 
 **Response** `200`:
 ```json
@@ -53,6 +55,17 @@ Backed by: `get_employee_profile()` + `get_employee_ml_scores()` in
   "predicted_score": 78.4,
   "rating_label": "High Performer",
   "rating_color": "#1e40af",
+  "live_predicted_score": 74.6,
+  "live_confidence": "medium",
+  "live_real_feature_count": 10,
+  "live_total_feature_count": 11,
+  "score_signals": {
+    "review_dimensions": { "technical_competence": 6.0, "domain_knowledge": 7.0, "...": "..." },
+    "output_quality_composite": null,
+    "overtime_ratio": 0.0309,
+    "peer_productivity_gap": -8.9,
+    "fb_composite_rating": 7.66
+  },
   "all_reviews": [
     { "review_id": "REV0001", "review_type": "Annual", "review_date": "2026-03-01",
       "overall_score": 78.4 }
@@ -60,13 +73,70 @@ Backed by: `get_employee_profile()` + `get_employee_ml_scores()` in
 }
 ```
 
-**⚠️ Known gap:** the frontend's `Performance.jsx` was originally built against a richer
-shape that included `breakdown` (technical/behavioral/quality/productivity percentages) and
-`sub_scores` (10 named 0–10 scores). **Those fields are NOT returned** — that data would
-come from `Model2_Performance`, which lives on other branches (`preprocessor`, etc.), not
-`dev-backend`. Frontend TODO: `Performance.jsx`'s `ResultContent` component needs to stop
-rendering the cluster-breakdown and sub-score sections until `Model2_Performance` is ported
-into this branch and a real endpoint can supply them.
+`predicted_score` is the DB-stored value (unchanged, for comparison). `live_predicted_score`
+comes from `performance_ridge_model.pkl` run against real DB data (2 model features derived
+from 11 real raw inputs, all live — see `ml_models/README.md`), median-imputing any
+individual raw input missing on the employee's latest review/profile; `live_confidence` is
+`high`/`medium`/`low` based on how many were imputed. `score_signals.review_dimensions`
+replaces the old fabricated `breakdown`/`sub_scores` shape with real per-competency scores
+from `performance_reviews`; the 4 composite signals are `null` when their inputs aren't fully
+real rather than silently reporting a training-mean-derived number — see
+`docs/performance_scoring.md`.
+
+## `GET /api/burnout/employees`
+
+Employee list with latest stored burnout assessment, for the selector table.
+
+Backed by: `modules/burnout/routes.py::list_employees`.
+
+**Response** `200`:
+```json
+[
+  { "employee_id": "EMP001", "department": "Engineering", "role": "Team Lead",
+    "seniority": "Mid", "stored_score": 18.4, "stored_category": "Low Risk" }
+]
+```
+
+## `POST /api/burnout/analyse`
+
+**Request body:**
+```json
+{ "employee_id": "EMP001" }
+```
+
+Backed by: `get_employee_profile()` in `tools.py` plus live model inference via
+`modules/ml/predict.py::predict_burnout` (`burnout_model_bundle.pkl`).
+
+**Response** `200`:
+```json
+{
+  "employee": { "employee_id": "EMP001", "role": "Team Lead", "department": "Engineering", "seniority": "Mid" },
+  "predicted_class": "Moderate",
+  "predicted_class_color": "#92400e",
+  "predicted_probabilities": { "Low": 0.0, "Moderate": 1.0, "High": 0.0 },
+  "predicted_score": 24.1,
+  "class_thresholds": { "low_max": 19.48, "medium_max": 37.78 },
+  "confidence": "high",
+  "imputed_features": ["..."],
+  "missing_top_features": [],
+  "real_feature_count": 15,
+  "total_feature_count": 17,
+  "top_contributing_features": { "stress_load": 0.2505, "...": "..." },
+  "stored_score": 18.4,
+  "stored_category": "Low Risk"
+}
+```
+
+**Update (2026-09-03):** the burnout model was swapped for a newer version (see
+`ml_models/README.md`, `docs/ML_MODELS_OVERVIEW.md`). It's now a `GradientBoostingRegressor`
+whose continuous score is bucketed into 3 classes (Low/Moderate/High — no more "Critical"),
+not the previous 4-class classifier. `predicted_probabilities` is a one-hot vector on the
+bucketed class (kept only for callers that read it by class key), not a calibrated
+distribution — use the new `predicted_score` field for the real continuous value. All 17
+input features are sourceable live (no ADD COLUMN/backfill gap like the previous model
+needed), so `confidence` should genuinely vary by employee rather than being structurally
+`"low"` for everyone. `stored_score`/`stored_category` remain useful as an independent point
+of comparison, not because the live prediction is untrustworthy.
 
 ## `POST /api/agent/query`
 

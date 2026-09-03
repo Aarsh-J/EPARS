@@ -1,0 +1,87 @@
+{
+  "_provenance": "Copied from UI_v2:code/Model1/model_bundle.pkl (WBP-train.py), retrained under scikit-learn 1.8.0 to match this repo's pinned version (source pkl was trained under an unpinned >=1.3.0 env). Superseded the previous GradientBoostingClassifier bundle (burnout_gbm_model.pkl, 135 features) from the preprocessor branch. See ../docs/ML_MODELS_OVERVIEW.md for the full writeup.",
+  "model_name": "Gradient Boosting Regressor + percentile bucketing",
+  "model_type": "GradientBoostingRegressor",
+  "n_estimators": 800,
+  "learning_rate": 0.03,
+  "max_depth": 4,
+  "subsample": 0.85,
+  "max_features": "sqrt",
+  "note_on_output": "This model regresses a continuous 0-100 burnout_risk_computed score, unlike the previous model which was a 4-class classifier with predict_proba. The continuous score is bucketed into 3 classes (not 4 — 'Critical' no longer exists) via percentile thresholds computed on the full training set. predicted_probabilities in the API response is therefore a one-hot vector on the bucketed class, not a calibrated probability distribution — see modules/ml/predict.py.",
+  "class_thresholds": {
+    "Low": "score < low_max",
+    "Moderate": "low_max <= score < medium_max",
+    "High": "score >= medium_max"
+  },
+  "low_max": 19.47767323096453,
+  "medium_max": 37.77776746376875,
+  "feature_columns": [
+    "technical_proficiency_score",
+    "domain_expertise_score",
+    "leadership_potential",
+    "workload_compatibility_score",
+    "availability_score",
+    "collaboration_score",
+    "years_of_experience",
+    "historical_performance_score",
+    "average_task_completion_rate",
+    "successful_project_count",
+    "late_hours_frequency",
+    "vacation_days_unused",
+    "job_satisfaction",
+    "role_ambiguity",
+    "job_control",
+    "stress_load",
+    "pressure_index"
+  ],
+  "engineered_features": {
+    "stress_load": "(late_hours_frequency * vacation_days_unused) / 10",
+    "pressure_index": "late_hours_frequency + role_ambiguity",
+    "workload_compatibility_score": "computed live from employees.weekly_capacity_hours/current_project_count, same formula as training's WBP-pp.py but WITHOUT the Gaussian noise term training added for synthetic-data realism (inappropriate for deterministic live inference)",
+    "availability_score": "computed live from employees.is_available/current_project_count, same bucketed formula as training's WBP-pp.py, noise term omitted for the same reason"
+  },
+  "all_features_live": "Unlike the previous burnout model, every one of these 17 features is sourceable from the live DB (employees + latest burnout_indicators row per employee) — no ADD COLUMN/backfill gap.",
+  "imputation": "This model has no built-in imputer (unlike the old Pipeline([SimpleImputer, ...])). Missing raw inputs (e.g. no burnout_indicators row yet for a new employee) are filled with the training-set median before scoring — see live_medians below, sourced from UI_v2:code/Model1/processed.csv.",
+  "live_medians": {
+    "technical_proficiency_score": 53.6,
+    "domain_expertise_score": 42.6,
+    "leadership_potential": 39.9,
+    "workload_compatibility_score": 24.36487320830633,
+    "availability_score": 58.21301995963215,
+    "collaboration_score": 7.0,
+    "years_of_experience": 5.4,
+    "historical_performance_score": 72.9,
+    "average_task_completion_rate": 83.3,
+    "successful_project_count": 1.0,
+    "late_hours_frequency": 2.0,
+    "vacation_days_unused": 2.0,
+    "job_satisfaction": 8.0,
+    "role_ambiguity": 1.0,
+    "job_control": 9.0,
+    "stress_load": 0.2,
+    "pressure_index": 3.0
+  },
+  "metrics": {
+    "note": "Re-measured by re-running WBP-train.py against UI_v2:code/Model1/processed.csv under scikit-learn 1.8.0 (this branch's pinned version) — not persisted anywhere in the source repo originally.",
+    "r2": 0.824,
+    "rmse": 7.6495,
+    "cv_r2_mean": 0.7812,
+    "cv_r2_std": 0.0228,
+    "bucketed_accuracy": 0.76,
+    "bucketed_f1_macro": 0.74,
+    "test_size": 300,
+    "per_class_f1": {
+      "Low": 0.84,
+      "Moderate": 0.57,
+      "High": 0.82
+    }
+  },
+  "top_features": {
+    "stress_load": 0.2505,
+    "job_satisfaction": 0.1642,
+    "pressure_index": 0.1625,
+    "late_hours_frequency": 0.1123,
+    "vacation_days_unused": 0.0720,
+    "job_control": 0.0688
+  }
+}
