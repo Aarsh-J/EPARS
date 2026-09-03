@@ -74,3 +74,15 @@ export function decideReassignment(recommendationId, decision) {
     body: JSON.stringify({ decision }),
   });
 }
+
+export function getOpenTasks() {
+  return request("/api/task_assignment/tasks");
+}
+
+export function scoreTaskAssignment(taskId, employeeId) {
+  return request(`/api/task_assignment/score?task_id=${encodeURIComponent(taskId)}&employee_id=${encodeURIComponent(employeeId)}`);
+}
+
+export function recommendForTask(taskId, topN = 5) {
+  return request(`/api/task_assignment/recommend/${encodeURIComponent(taskId)}?top_n=${topN}`);
+}
