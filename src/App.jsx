@@ -3,6 +3,7 @@ import Layout from "./components/Layout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Performance from "./pages/Performance.jsx";
 import Burnout from "./pages/Burnout.jsx";
+import TaskAssignment from './pages/TaskAssignment.jsx';
 
 const PAGE_TITLES = {
   "/": "Dashboard",
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/performance" element={<Performance />} />
         <Route path="/burnout" element={<Burnout />} />
+        <Route path="/task-assignment" element={<TaskAssignment />} />
       </Routes>
     </Layout>
   );
