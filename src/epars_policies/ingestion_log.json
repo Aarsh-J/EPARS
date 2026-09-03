@@ -1,0 +1,58 @@
+[
+  {
+    "file": "01_task_assignment_policy.md",
+    "doc_id": "POL-TASK-001",
+    "title": "Task Assignment Policy",
+    "chunks": 14,
+    "total_chars": 3588
+  },
+  {
+    "file": "02_burnout_wellbeing_policy.md",
+    "doc_id": "POL-WELL-002",
+    "title": "Employee Burnout Prevention and Wellbeing Policy",
+    "chunks": 17,
+    "total_chars": 4544
+  },
+  {
+    "file": "03_team_formation_policy.md",
+    "doc_id": "POL-TEAM-003",
+    "title": "Team Formation Policy",
+    "chunks": 19,
+    "total_chars": 4696
+  },
+  {
+    "file": "04_performance_evaluation_policy.md",
+    "doc_id": "POL-PERF-004",
+    "title": "Performance Evaluation Policy",
+    "chunks": 18,
+    "total_chars": 5006
+  },
+  {
+    "file": "05_workflow_monitoring_policy.md",
+    "doc_id": "POL-WFLOW-005",
+    "title": "Workflow Monitoring and Delay Management Policy",
+    "chunks": 18,
+    "total_chars": 4542
+  },
+  {
+    "file": "06_leave_availability_policy.md",
+    "doc_id": "POL-LEAVE-006",
+    "title": "Leave, Availability, and Scheduling Policy",
+    "chunks": 14,
+    "total_chars": 3133
+  },
+  {
+    "file": "07_promotion_career_sop.md",
+    "doc_id": "SOP-CAREER-007",
+    "title": "Promotion and Career Progression Standard Operating Procedure",
+    "chunks": 11,
+    "total_chars": 3178
+  },
+  {
+    "file": "08_skill_development_policy.md",
+    "doc_id": "POL-SKILL-008",
+    "title": "Skill Development and Training Policy",
+    "chunks": 16,
+    "total_chars": 3794
+  }
+]
