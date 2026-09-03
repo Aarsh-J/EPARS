@@ -2,16 +2,16 @@
 
 Predicts an employee's `overall_performance_score` (0-100).
 
-Refreshed 2026-09-03 from `UI_v2:code/Model2_Performance/`, replacing an older bundled-Ridge
-version. Live in `dev-backend` as `ml_models/performance_ridge_model.pkl` +
-`performance_scaler.pkl` — see that repo's `docs/ML_MODELS_OVERVIEW.md` for the production
-integration writeup this doc feeds into.
+Refreshed 2026-09-03 from `UI_v2:code/Model2_Performance/` @ commit `811254b3` ("updated
+model"), replacing an older bundled-Ridge version. Live in `dev-backend` as
+`ml_models/performance_ridge_model.pkl` + `performance_scaler.pkl` — see that repo's
+`docs/ML_MODELS_OVERVIEW.md` for the production integration writeup this doc feeds into.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `pre_processing.py` | Merges `performance_reviews.csv` + `employees.csv` + `workload_history.csv`, median-fills missing numerics, writes `processed_data.csv` |
+| `pre_processing.py` | Merges `performance_reviews.csv` + `employees.csv`, median-fills missing numerics, writes `processed_data.csv` |
 | `train.py` | Trains the model, writes `ridge_model.pkl` + `scaler.pkl` + diagnostic plots |
 | `pem_predict.py` | CLI inference script |
 | `ridge_model.pkl` / `scaler.pkl` | Separate pickles — `dev-backend`'s loader wraps both into one dict at load time |
@@ -40,36 +40,38 @@ quality_norm       = quality_of_work_score * 10
 productivity_norm  = productivity_score * 10
 ```
 
-### Known bug (present in the shipped model — not yet fixed)
+### `collaboration_score` source — read carefully if touching this preprocessing
 
-`train.py` reads `collaboration_score` through a `col(name, default=0)` helper that silently
-returns 0 when the exact column name isn't in the training dataframe. Because
-`pre_processing.py`'s merge produces `collaboration_score_x`/`collaboration_score_y`
-(suffix collision between `performance_reviews` and `employees`, both of which have a
-`collaboration_score` column) and never an unsuffixed `collaboration_score`, this lookup
-always returns 0 — **the model was trained with collaboration's contribution to
-`behavioral_cluster` always 0**, not the real per-review value. `dev-backend`'s inference
-code deliberately replicates this (rather than "fixing" it) so the model sees the same input
-distribution it was trained on — feeding it real collaboration data would silently shift its
-calibration. Fixing this properly requires retraining, not just a preprocessing patch: the
-fix is to name the review-table and employee-table columns distinctly before merging (e.g.
-`review_collaboration_score` / `employee_collaboration_score`), decide which one — or both —
-should actually feed `behavioral_cluster`, and retrain.
+Both `performance_reviews` and `employees` have a same-named `collaboration_score` column.
+`pre_processing.py`'s merge produces `collaboration_score_x` (from `performance_reviews`) and
+`collaboration_score_y` (from `employees`) — `pre_processing.py` explicitly selects
+`collaboration_score_y` and renames it back to `collaboration_score`, so **the model trains
+on the `employees` value, not the review-specific one**. This is intentional (per the
+script's own comment), not an oversight.
+
+An earlier iteration of this preprocessing (commit `d4082c18` and before, superseded by
+`811254b3` and never shipped to `dev-backend`) had a real bug here: it looked up the
+unsuffixed `collaboration_score` name directly, which never existed post-merge, so a
+`col(name, default=0)` helper silently substituted 0 for every row — collaboration's
+contribution to `behavioral_cluster` was always 0 regardless of the actual data. Worth
+knowing about only because it's an easy mistake to reintroduce if this preprocessing is ever
+rewritten — always confirm which suffix survives a merge before referencing a column that
+exists in both source tables.
 
 ## Metrics (re-measured 2026-09-03, scikit-learn 1.8.0 — not persisted by the original script)
 
 | Metric | Value |
 |---|---|
-| R² | 0.817 |
-| MAE | 3.242 |
-| RMSE | 4.072 |
-| CV R² (5-fold) | 0.814 |
+| R² | 0.813 |
+| MAE | 3.292 |
+| RMSE | 4.107 |
+| CV R² (5-fold) | 0.811 |
 
 ## Retraining
 
 ```
 cd code/Model2_Performance
 pip install pandas numpy scikit-learn matplotlib
-python pre_processing.py   # needs ../dataset/{performance_reviews,employees,workload_history}.csv
+python pre_processing.py   # needs ../../dataset/{performance_reviews,employees}.csv
 python train.py            # trains + saves ridge_model.pkl, scaler.pkl, diagnostic plots
 ```

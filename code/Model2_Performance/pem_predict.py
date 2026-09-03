@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 # SETTINGS
 # ===============================================================
 
-DATA_DIR = "../dataset"
+DATA_DIR = "../../dataset"
 MODEL_FILE = "ridge_model.pkl"
 SCALER_FILE = "scaler.pkl"
 
@@ -94,7 +94,11 @@ def predict_performance(employee_id):
     ps = val(perf_row, "problem_solving_score")
 
     cs = val(perf_row, "communication_score")
-    cb = val(perf_row, "collaboration_score")
+    cb = val(emp_row, "collaboration_score")  # from employees.csv, matching pre_processing.py's
+                                               # collaboration_score_y choice — NOT perf_row's
+                                               # review-specific collaboration_score (different,
+                                               # near-uncorrelated column; train.py trains on the
+                                               # employees.csv version)
     ls = val(perf_row, "leadership_score")
     ins = val(perf_row, "initiative_score")
     tm = val(perf_row, "time_management_score")
