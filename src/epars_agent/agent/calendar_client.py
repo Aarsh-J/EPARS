@@ -13,6 +13,7 @@ If calendar_id is omitted, falls back to the shared team CALENDAR_ID.
 """
 
 import datetime
+import os
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -21,10 +22,22 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 SERVICE_ACCOUNT_FILE = 'sa_key.json'
 CALENDAR_ID = 'aarna.manjunath04@gmail.com'  # shared team calendar — fallback default
 
-_creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
-)
-_service = build('calendar', 'v3', credentials=_creds)
+_service = None
+_init_error: str | None = None
+
+if os.path.exists(SERVICE_ACCOUNT_FILE):
+    try:
+        _creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
+        _service = build('calendar', 'v3', credentials=_creds)
+    except Exception as e:  # malformed key, bad permissions, etc.
+        _init_error = f"Failed to initialize Google Calendar client: {e}"
+else:
+    _init_error = (
+        f"Google Calendar is not configured: '{SERVICE_ACCOUNT_FILE}' not found. "
+        "Calendar features are unavailable until this service account key is added."
+    )
 
 
 def create_event(summary: str, start_time: str, end_time: str, description: str = "", calendar_id: str | None = None, timezone: str = "Asia/Kolkata") -> dict:
@@ -36,6 +49,9 @@ def create_event(summary: str, start_time: str, end_time: str, description: str 
     start_time / end_time must be ISO 8601, e.g. '2026-07-15T10:00:00'
     Returns the created event dict (includes 'id' — store this as google_event_id).
     """
+    if _service is None:
+        return {'success': False, 'error': _init_error}
+
     target_calendar = calendar_id or CALENDAR_ID
     event_body = {
         'summary': summary,
@@ -58,6 +74,9 @@ def update_event(event_id: str, start_time: str | None = None, end_time: str | N
     calendar_id must match whichever calendar the event actually lives on
     (the same value passed to create_event when it was made).
     """
+    if _service is None:
+        return {'success': False, 'error': _init_error}
+
     target_calendar = calendar_id or CALENDAR_ID
     try:
         event = _service.events().get(calendarId=target_calendar, eventId=event_id).execute()
@@ -79,6 +98,9 @@ def delete_event(event_id: str, calendar_id: str | None = None) -> dict:
     """
     calendar_id must match whichever calendar the event actually lives on.
     """
+    if _service is None:
+        return {'success': False, 'error': _init_error}
+
     target_calendar = calendar_id or CALENDAR_ID
     try:
         _service.events().delete(calendarId=target_calendar, eventId=event_id).execute()
@@ -93,6 +115,9 @@ def list_events(time_min: str | None = None, time_max: str | None = None, max_re
     calendar_id lets you list a specific employee's calendar instead of the
     shared team one.
     """
+    if _service is None:
+        return {'success': False, 'error': _init_error}
+
     target_calendar = calendar_id or CALENDAR_ID
     if not time_min:
         time_min = datetime.datetime.utcnow().isoformat() + 'Z'
