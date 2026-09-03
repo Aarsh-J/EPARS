@@ -299,6 +299,29 @@ def find_available_employees(required_skills: str, required_role: str = "", requ
         return [{"error": str(e)}]
 
 # ══════════════════════════════════════════════════════════════════════════════
+# TOOL 5b — get_task_assignment_recommendation
+# Purpose : Use the trained ML model to score a task-employee pair and
+#           recommend the top 3 best-fit employees for a given task.
+# Used by : Task assignment agent — call this before assign_task to get
+#           ML-backed candidate rankings instead of just skill matching.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_task_assignment_recommendation(task_id: str, top_n: int = 3) -> dict:
+    try:
+        from modules.task_assignment.inference import recommend_employees
+        results = recommend_employees(task_id, top_n=top_n)
+        return {
+            "task_id": task_id,
+            "top_candidates": results,
+            "model_info": {
+                "classification_model": "Gradient Boosting",
+                "regression_model":     "Random Forest",
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TOOL 6 — assign_task
 # Purpose : Write a new task assignment record to the database.
 # Used by : Task assignment agent (the actual write action).
@@ -665,6 +688,25 @@ try:
             "performance score, with their burnout risk and availability status."
         ),
     )
+    # Tool 5b
+    task_assignment_ml_tool = Tool(
+        name="get_task_assignment_recommendation",
+        func=lambda q: json.dumps(
+            get_task_assignment_recommendation(
+                **{k: v for k, v in
+                [item.split("=", 1) for item in q.split("|") if "=" in item]}
+            ), default=_serialize
+        ),
+        description=(
+            "Uses the trained ML model to recommend the top N best-fit employees "
+            "for a given task based on predicted assignment success and delay risk. "
+            "Input format: 'task_id=TSK0001|top_n=3' "
+            "Returns candidates ranked by success_probability with delay_risk_score "
+            "and a recommendation label for each. "
+            "Call this before assign_task to get ML-backed rankings, then verify "
+            "workload and burnout with get_employee_workload before finalizing."
+        ),
+    )
     # Tool 6
     assign_task_tool = Tool(
         name="assign_task",
@@ -755,6 +797,7 @@ try:
         workload_tool,
         task_details_tool,
         find_employees_tool,
+        task_assignment_ml_tool,   # ← add this
         assign_task_tool,
         flag_burnout_tool,
         create_calendar_event_tool,

@@ -36,6 +36,8 @@ from .burnout.routes import router as burnout_router  # noqa: E402
 from .agent.routes import router as agent_router  # noqa: E402
 from .ml.loader import preload_models  # noqa: E402
 
+from modules.task_assignment.routes import router as task_assignment_router
+
 logger = logging.getLogger("epars.startup")
 
 
@@ -63,6 +65,7 @@ app.add_middleware(
 app.include_router(performance_router, prefix="/api")
 app.include_router(burnout_router, prefix="/api")
 app.include_router(agent_router, prefix="/api")
+app.include_router(task_assignment_router)
 
 
 @app.get("/health")
