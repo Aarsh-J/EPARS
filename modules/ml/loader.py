@@ -35,13 +35,31 @@ def get_burnout_model():
     return joblib.load(MODELS_DIR / "burnout_model_bundle.pkl")
 
 
+@lru_cache(maxsize=1)
+def get_task_assignment_model():
+    """Returns the novel_pair_regressor RandomForestRegressor (Model3, Layer 3)."""
+    return joblib.load(MODELS_DIR / "task_assignment_regressor.pkl")
+
+
+@lru_cache(maxsize=1)
+def get_task_assignment_encoders():
+    """Returns {column_name: fitted LabelEncoder} for task_assignment's categorical inputs."""
+    return joblib.load(MODELS_DIR / "task_assignment_label_encoders.joblib")
+
+
 def preload_models():
     """
     Call once at API startup so a broken/missing pickle fails fast with a clear
     log line, instead of surfacing as an opaque 500 on the first real request.
     """
     errors = {}
-    for name, loader in (("performance", get_performance_model), ("burnout", get_burnout_model)):
+    loaders = (
+        ("performance", get_performance_model),
+        ("burnout", get_burnout_model),
+        ("task_assignment_model", get_task_assignment_model),
+        ("task_assignment_encoders", get_task_assignment_encoders),
+    )
+    for name, loader in loaders:
         try:
             loader()
         except Exception as e:  # noqa: BLE001 — we want to catch+log any pickle/env issue here

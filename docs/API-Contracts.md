@@ -163,18 +163,65 @@ Backed by: `run_agent()` in `src/epars_agent/agent/epars_agent.py` — the exact
 `steps` is the ordered list of tool calls the agent made — useful for the frontend to show
 its work, not just the final answer.
 
-## `GET /health`
+## `GET /api/task_assignment/tasks`
 
-No prefix. Plain liveness check, returns `{"status": "ok"}`.
+Open (not completed/cancelled) tasks for the selector UI.
+
+Backed by: `modules/task_assignment/routes.py::list_tasks`, `modules/ml/task_assignment_features.py::get_open_tasks`.
+
+**Response** `200`:
+```json
+[
+  { "task_id": "TSK1195", "task_name": "Code review #1195", "task_type": "Review",
+    "priority": "Critical", "required_role": "Senior Engineer", "due_date": "2023-01-06",
+    "status": "In Review" }
+]
+```
+
+## `GET /api/task_assignment/score?task_id=&employee_id=`
+
+Score a single (task, employee) pair — works for pairs with no assignment history.
+
+Backed by: `modules/ml/task_assignment_predict.py::score_pair` (Model3, Layer 3 —
+`task_assignment_regressor.pkl`; see `ml_models/README.md` for why Layers 1/2 aren't used).
+
+**Response** `200`:
+```json
+{
+  "task_id": "TSK1195",
+  "employee_id": "EMP001",
+  "predicted_delay_risk": 78.7,
+  "real_skill_match": 0.0,
+  "composite_score": 39.5,
+  "delay_component": 21.3,
+  "skill_component": 0.0,
+  "availability_component": 58.8,
+  "reliability_component": 100.0,
+  "health_component": 81.7
+}
+```
+`composite_score` (0-100, higher is better) blends `predicted_delay_risk` (35%, inverted),
+skill fit (25%), availability (15%), historical reliability (15%), and health/burnout risk
+(10%, inverted) — the `*_component` fields are each already on a 0-100 "higher is better" scale
+so the frontend can render them directly (e.g. as a breakdown bar chart) without re-deriving
+signs/weights client-side.
+
+## `GET /api/task_assignment/recommend/{task_id}?top_n=3`
+
+Ranks every employee against a task, returns the top N by `composite_score` descending.
+
+Backed by: `modules/ml/task_assignment_predict.py::recommend_top_n` — batches the regressor
+call across the whole candidate pool instead of one predict() per employee.
+
+**Response** `200`: array of the same shape as `/score`'s response, sorted by `composite_score` descending.
 
 ---
 
 ## Not yet built
 
-- Task assignment, workload/risk, and team-formation modules — no routes yet. Follow the
-  `performance` module as the template: one `modules/<name>/routes.py` + one router
-  included in `modules/main.py`, calling into existing `tools.py` functions where they
-  exist.
+- Team-formation module (Model 4) — no trained pickle exists yet with an acceptable accuracy
+  (the one attempt, on `dataset-branch`, has negative test R² per its own docs). Deferred until
+  a properly trained model exists; follow `task_assignment` as the template once it does.
 - Burnout monitor (`src/epars_agent/agent/burnout_monitor.py`) is still a standalone
   cron/manual script (`python burnout_monitor.py`), not exposed over HTTP. If the frontend
   needs to trigger it or read its results, that's a new route to add here.

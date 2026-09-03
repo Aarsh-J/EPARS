@@ -1,6 +1,6 @@
 # ml_models/
 
-Two trained models, wired into the API by `modules/ml/`. Both were refreshed on
+Three trained models, wired into the API by `modules/ml/`. The first two were refreshed on
 2026-09-03 from newer versions developed on other branches — see
 `../docs/ML_MODELS_OVERVIEW.md` for the full model-development writeup (algorithms
 tried, features, real accuracy numbers) and the per-model docs on the
@@ -47,3 +47,32 @@ and `modules/ml/performance_features.py` for the corrected behavior.
   medians (`burnout_model_metadata.json:live_medians`) in `modules/ml/burnout_features.py`.
 - Metrics (re-measured, not persisted in the source repo): R²=0.824, RMSE=7.65,
   5-fold CV R²=0.781, bucketed accuracy=0.76, bucketed F1-macro=0.74.
+
+## task_assignment_regressor.pkl + task_assignment_label_encoders.joblib
+- Source: `preprocessor:code/Model3_TaskAssignment/artifacts/{novel_pair_regressor.pkl,
+  label_encoders.joblib}` — "Layer 3" of that branch's 3-model pipeline (`scheduler.py`).
+- **Layers 1/2 on that branch (`best_classifier.pkl` + `best_regressor.pkl`) are deliberately
+  NOT used here.** They only score task/employee pairs that already exist as historical rows
+  in the training data — useless for the real product need (recommending a genuinely new
+  pairing). Layer 1's classifier specifically was measured at AUC=0.58 on novel pairs
+  (barely above the 0.50 random baseline) and was excluded from `scheduler.py` by its own
+  author for that reason.
+- `task_assignment_regressor.pkl` is a `RandomForestRegressor` (33 features, `feature_names_in_`
+  pinned) predicting `delay_risk_score` for ANY (task, employee) pair — trained and validated
+  specifically on pairs with zero assignment history. R²=0.851 on that novel-pair test set,
+  the only one of the three models actually measured on the scenario this API needs.
+- `task_assignment_label_encoders.joblib` — `{column: fitted LabelEncoder}` for the task's
+  categorical inputs (`task_type`, `priority`, `complexity`, `required_role`,
+  `required_seniority`, `risk_level`, `business_impact`); unseen values at inference time fall
+  back to each encoder's first known class (same policy as the source branch's
+  `encode_categoricals(fit=False)`). Unpickles with a scikit-learn version warning (fitted
+  under 1.5.2, this repo pins 1.8.0) — functionally fine for a `LabelEncoder` (just an array of
+  classes + a mapping), but retrain-and-recopy under 1.8.0 if that ever becomes a concern.
+- All 33 features are sourced live via `modules/ml/task_assignment_features.py` — the live
+  Postgres schema (`tasks`, `projects`, `employees`, `burnout_indicators`, `schedules`) mirrors
+  the CSVs Layer 3 was trained on column-for-column, so there's no live-data gap here either.
+  The composite 0-100 ranking score blends this model's delay-risk prediction (35%) with
+  4 explainable heuristics — skill fit (25%, from raw `required_skills`/`primary_skills` text
+  overlap, sourceable for every pair), availability (15%), historical reliability (15%), and
+  health/burnout risk (10%) — see `modules/ml/task_assignment_predict.py` for the exact
+  formula (ported verbatim from `scheduler.py`).
