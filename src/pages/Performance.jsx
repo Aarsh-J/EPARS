@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getEmployees, analyseEmployee, finalizePerformanceScore } from "../api/client.js";
+import { useEmployeeTableControls } from "../hooks/useEmployeeTableControls.js";
 
 const SIGNAL_META = [
   { key: "output_quality_composite", label: "Output Quality" },
@@ -41,29 +42,37 @@ function ratingFromScore(score) {
 export default function Performance() {
   const [employees, setEmployees] = useState([]);
   const [loadError, setLoadError] = useState(null);
-  const [search, setSearch] = useState("");
 
   const [selectedId, setSelectedId] = useState(null);
   const [result, setResult] = useState(null);
   const [analysing, setAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState(null);
 
+  const {
+    search,
+    setSearch,
+    filters,
+    setFilter,
+    filterOptions,
+    clearFilters,
+    sortDir,
+    toggleSort,
+    rows: filtered,
+    selectedIds,
+    toggleSelect,
+    toggleSelectAll,
+    allFilteredSelected,
+  } = useEmployeeTableControls(employees, {
+    searchKeys: ["employee_id", "department", "role"],
+    filterKeys: ["department", "role", "seniority"],
+    scoreKey: "score",
+  });
+
   useEffect(() => {
     getEmployees()
       .then(setEmployees)
       .catch((err) => setLoadError(err.message));
   }, []);
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    if (!q) return employees;
-    return employees.filter(
-      (e) =>
-        e.employee_id.toLowerCase().includes(q) ||
-        e.department.toLowerCase().includes(q) ||
-        e.role.toLowerCase().includes(q)
-    );
-  }, [employees, search]);
 
   function handleAnalyse(employeeId, reviewId = null) {
     setSelectedId(employeeId);
@@ -122,21 +131,83 @@ export default function Performance() {
 
       {loadError && <p style={{ color: "#991b1b" }}>{loadError}</p>}
 
+      <div className="filter-bar">
+        <select className="filter-select" value={filters.department || ""} onChange={(e) => setFilter("department", e.target.value)}>
+          <option value="">All Departments</option>
+          {filterOptions.department.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select className="filter-select" value={filters.role || ""} onChange={(e) => setFilter("role", e.target.value)}>
+          <option value="">All Roles</option>
+          {filterOptions.role.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select className="filter-select" value={filters.seniority || ""} onChange={(e) => setFilter("seniority", e.target.value)}>
+          <option value="">All Seniorities</option>
+          {filterOptions.seniority.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <button className="filter-clear-btn" onClick={clearFilters}>
+          Clear filters
+        </button>
+      </div>
+
+      {selectedIds.size > 0 && (
+        <div className="bulk-actions-bar">
+          <span>
+            <span className="bulk-count">{selectedIds.size}</span> employee{selectedIds.size === 1 ? "" : "s"} selected
+          </span>
+          <span
+            className="bulk-block-note"
+            title="Performance scores must be reviewed and finalized by a manager one at a time, so bulk evaluation is disabled for this module."
+          >
+            Bulk run disabled — performance scores require manager review
+          </span>
+          <button className="btn-analyse" disabled title="Performance scores require manager review before they can be recorded — run evaluations one employee at a time.">
+            Run Performance Evaluation
+          </button>
+        </div>
+      )}
+
       <div className="employee-table-wrap">
         <table className="employee-table" id="emp-table">
           <thead>
             <tr>
+              <th className="checkbox-col">
+                <input
+                  type="checkbox"
+                  className="emp-table-checkbox"
+                  checked={allFilteredSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all filtered employees"
+                />
+              </th>
               <th>Employee ID</th>
               <th>Department</th>
               <th>Role</th>
               <th>Seniority</th>
-              <th>Latest Score</th>
+              <th className="th-sortable" onClick={toggleSort}>
+                Latest Score
+                {sortDir && <span className="sort-arrow">{sortDir === "asc" ? "▲" : "▼"}</span>}
+              </th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((emp) => (
               <tr className="emp-row" key={emp.employee_id}>
+                <td className="checkbox-col">
+                  <input
+                    type="checkbox"
+                    className="emp-table-checkbox"
+                    checked={selectedIds.has(emp.employee_id)}
+                    onChange={() => toggleSelect(emp.employee_id)}
+                    aria-label={`Select ${emp.employee_id}`}
+                  />
+                </td>
                 <td className="emp-name">{emp.employee_id}</td>
                 <td>{emp.department}</td>
                 <td>{emp.role}</td>

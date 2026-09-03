@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getBurnoutEmployees, analyseBurnout, verifyBurnoutAssessment, decideReassignment } from "../api/client.js";
+import { useEmployeeTableControls } from "../hooks/useEmployeeTableControls.js";
 
 function categoryClass(category) {
   const c = (category || "").toLowerCase();
@@ -12,29 +13,42 @@ function categoryClass(category) {
 export default function Burnout() {
   const [employees, setEmployees] = useState([]);
   const [loadError, setLoadError] = useState(null);
-  const [search, setSearch] = useState("");
 
   const [selectedId, setSelectedId] = useState(null);
   const [result, setResult] = useState(null);
   const [analysing, setAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState(null);
 
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkResults, setBulkResults] = useState(null);
+  const [bulkProgress, setBulkProgress] = useState(0);
+
+  const {
+    search,
+    setSearch,
+    filters,
+    setFilter,
+    filterOptions,
+    clearFilters,
+    sortDir,
+    toggleSort,
+    rows: filtered,
+    selectedIds,
+    toggleSelect,
+    toggleSelectAll,
+    allFilteredSelected,
+    clearSelection,
+  } = useEmployeeTableControls(employees, {
+    searchKeys: ["employee_id", "department", "role"],
+    filterKeys: ["department", "role", "seniority", "stored_category"],
+    scoreKey: "stored_score",
+  });
+
   useEffect(() => {
     getBurnoutEmployees()
       .then(setEmployees)
       .catch((err) => setLoadError(err.message));
   }, []);
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    if (!q) return employees;
-    return employees.filter(
-      (e) =>
-        e.employee_id.toLowerCase().includes(q) ||
-        e.department.toLowerCase().includes(q) ||
-        e.role.toLowerCase().includes(q)
-    );
-  }, [employees, search]);
 
   function handleAnalyse(employeeId) {
     setSelectedId(employeeId);
@@ -47,10 +61,66 @@ export default function Burnout() {
       .finally(() => setAnalysing(false));
   }
 
+  const BULK_CONCURRENCY = 8;
+
+  async function handleBulkRun() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkRunning(true);
+    setBulkResults(null);
+    setBulkProgress(0);
+
+    const outcomes = new Array(ids.length);
+    let next = 0;
+    let done = 0;
+    async function worker() {
+      while (next < ids.length) {
+        const i = next++;
+        try {
+          outcomes[i] = { employee_id: ids[i], success: true, data: await analyseBurnout(ids[i]), error: null };
+        } catch (err) {
+          outcomes[i] = { employee_id: ids[i], success: false, data: null, error: err.message };
+        }
+        done++;
+        setBulkProgress(done);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, ids.length) }, worker));
+
+    setBulkResults(outcomes);
+    setBulkRunning(false);
+    clearSelection();
+  }
+
   function resetView() {
     setSelectedId(null);
     setResult(null);
     setAnalyseError(null);
+  }
+
+  if (bulkResults) {
+    return (
+      <div className="card" id="bulk-results-panel">
+        <div className="card-header">
+          <h2>Bulk Burnout Evaluation Results</h2>
+          <button className="btn-secondary" onClick={() => setBulkResults(null)}>
+            ← Back to employee list
+          </button>
+        </div>
+        {bulkResults.map((r) => (
+          <div className="bulk-result-row" key={r.employee_id}>
+            <span className="emp-name">{r.employee_id}</span>
+            {r.success ? (
+              <span className={`score-pill ${categoryClass(r.data.predicted_class)}`}>
+                {r.data.predicted_class} ({r.data.confidence} confidence)
+              </span>
+            ) : (
+              <span className="bulk-result-error">Failed: {r.error}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (selectedId) {
@@ -93,14 +163,72 @@ export default function Burnout() {
 
       {loadError && <p style={{ color: "#991b1b" }}>{loadError}</p>}
 
+      <div className="filter-bar">
+        <select className="filter-select" value={filters.department || ""} onChange={(e) => setFilter("department", e.target.value)}>
+          <option value="">All Departments</option>
+          {filterOptions.department.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select className="filter-select" value={filters.role || ""} onChange={(e) => setFilter("role", e.target.value)}>
+          <option value="">All Roles</option>
+          {filterOptions.role.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select className="filter-select" value={filters.seniority || ""} onChange={(e) => setFilter("seniority", e.target.value)}>
+          <option value="">All Seniorities</option>
+          {filterOptions.seniority.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select
+          className="filter-select"
+          value={filters.stored_category || ""}
+          onChange={(e) => setFilter("stored_category", e.target.value)}
+        >
+          <option value="">All Categories</option>
+          {filterOptions.stored_category.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <button className="filter-clear-btn" onClick={clearFilters}>
+          Clear filters
+        </button>
+      </div>
+
+      {selectedIds.size > 0 && (
+        <div className="bulk-actions-bar">
+          <span>
+            <span className="bulk-count">{selectedIds.size}</span> employee{selectedIds.size === 1 ? "" : "s"} selected
+          </span>
+          <button className="btn-analyse" disabled={bulkRunning} onClick={handleBulkRun}>
+            {bulkRunning ? `Running… (${bulkProgress}/${selectedIds.size})` : "Run Burnout Evaluation"}
+          </button>
+        </div>
+      )}
+
       <div className="employee-table-wrap">
         <table className="employee-table" id="emp-table">
           <thead>
             <tr>
+              <th className="checkbox-col">
+                <input
+                  type="checkbox"
+                  className="emp-table-checkbox"
+                  checked={allFilteredSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all filtered employees"
+                />
+              </th>
               <th>Employee ID</th>
               <th>Department</th>
               <th>Role</th>
               <th>Seniority</th>
+              <th className="th-sortable" onClick={toggleSort}>
+                Burnout Score
+                {sortDir && <span className="sort-arrow">{sortDir === "asc" ? "▲" : "▼"}</span>}
+              </th>
               <th>Stored Category</th>
               <th></th>
             </tr>
@@ -108,12 +236,22 @@ export default function Burnout() {
           <tbody>
             {filtered.map((emp) => (
               <tr className="emp-row" key={emp.employee_id}>
+                <td className="checkbox-col">
+                  <input
+                    type="checkbox"
+                    className="emp-table-checkbox"
+                    checked={selectedIds.has(emp.employee_id)}
+                    onChange={() => toggleSelect(emp.employee_id)}
+                    aria-label={`Select ${emp.employee_id}`}
+                  />
+                </td>
                 <td className="emp-name">{emp.employee_id}</td>
                 <td>{emp.department}</td>
                 <td>{emp.role}</td>
                 <td>
                   <span className="seniority-badge">{emp.seniority}</span>
                 </td>
+                <td>{emp.stored_score ?? "—"}</td>
                 <td>
                   <span className={`score-pill ${categoryClass(emp.stored_category)}`}>
                     {emp.stored_category || "—"}
