@@ -2,7 +2,8 @@
 ePARS — Agentic AI Layer (Step 3)
 ===================================
 ReAct agent using LangGraph (compatible with langchain >= 0.2, langgraph >= 1.0)
-Combines 7 PostgreSQL tools + 1 RAG policy tool + GPT-4o
+Combines 7 PostgreSQL tools + 3 Google Calendar tools + 1 RAG policy tool,
+running on Groq's openai/gpt-oss-120b.
 """
 
 import os
@@ -28,6 +29,9 @@ from tools import (
     find_available_employees,
     assign_task,
     flag_burnout_alert,
+    create_calendar_event,
+    reschedule_calendar_event,
+    cancel_calendar_event,
     _serialize,
 )
 
@@ -154,6 +158,45 @@ def tool_retrieve_hr_policy(query: str) -> str:
     except Exception as e:
         return f"Policy retrieval unavailable: {e}. Use general HR best practices."
 
+@tool
+def tool_create_calendar_event(task_id: str, employee_id: str, start_time: str, end_time: str) -> str:
+    """
+    Creates a Google Calendar event for a task assignment on the employee's calendar.
+    task_id: e.g. TSK0001
+    employee_id: e.g. EMP001
+    start_time / end_time: ISO 8601 datetimes, e.g. 2026-08-10T10:00:00
+    Call this after tool_assign_task to put the work on the employee's calendar.
+    """
+    return _j(create_calendar_event(
+        task_id.strip(), employee_id.strip(), start_time.strip(), end_time.strip()
+    ))
+
+
+@tool
+def tool_reschedule_calendar_event(task_id: str, employee_id: str, new_start_time: str, new_end_time: str) -> str:
+    """
+    Reschedules an existing task's calendar event to a new time.
+    task_id: e.g. TSK0001
+    employee_id: e.g. EMP001
+    new_start_time / new_end_time: ISO 8601 datetimes, e.g. 2026-08-12T10:00:00
+    Use this when an employee's workload needs to be spread out rather than
+    reassigned to someone else (e.g. as a burnout-response action).
+    """
+    return _j(reschedule_calendar_event(
+        task_id.strip(), employee_id.strip(), new_start_time.strip(), new_end_time.strip()
+    ))
+
+
+@tool
+def tool_cancel_calendar_event(task_id: str, employee_id: str) -> str:
+    """
+    Cancels the calendar event for a task assignment.
+    task_id: e.g. TSK0001
+    employee_id: e.g. EMP001
+    Call this when reassigning a task to a different employee — cancel the
+    old owner's event, then tool_create_calendar_event for the new owner.
+    """
+    return _j(cancel_calendar_event(task_id.strip(), employee_id.strip()))
 
 # ── All tools collected ────────────────────────────────────────────────────────
 TOOLS = [
@@ -164,6 +207,9 @@ TOOLS = [
     tool_find_available_employees,
     tool_assign_task,
     tool_flag_burnout_alert,
+    tool_create_calendar_event,
+    tool_reschedule_calendar_event,
+    tool_cancel_calendar_event,
     tool_retrieve_hr_policy,
 ]
 
@@ -219,7 +265,7 @@ def build_agent():
         )
 
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         groq_api_key=api_key,
         temperature=0,
         max_tokens=4096,
