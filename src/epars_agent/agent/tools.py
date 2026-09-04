@@ -9,6 +9,20 @@ from datetime import date, datetime
 from decimal import Decimal
 from db import get_connection
 from calendar_client import create_event, update_event, delete_event
+
+# Task Assignment model (Model 3, Layer 3) lives in modules/ml/, outside this
+# package. It reuses this same db.py via a bare `from db import get_connection`,
+# which works because src/epars_agent/agent (this directory) is already on
+# sys.path when tools.py loads — so we only need the repo root added too, for
+# `modules` itself to be importable.
+import sys
+from pathlib import Path
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from modules.ml.task_assignment_predict import recommend_top_n, score_pair
+from modules.ml.predict import predict_performance, predict_burnout
+from modules.ml.task_assignment_predict import recommend_top_n, score_pair
 # ── Utility ────────────────────────────────────────────────────────────────────
 
 def _serialize(obj):
@@ -127,6 +141,33 @@ def get_employee_ml_scores(employee_id: str) -> dict:
         }
     except Exception as e:
         return {"error": str(e)}
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 2b — compute_live_performance_score
+# Purpose : Runs performance_ridge_model.pkl live against the employee's
+#           CURRENT DB state, instead of reading the last stored row like
+#           get_employee_ml_scores does.
+# Used by : Task assignment agent — use when the stored score might be
+#           stale, or the user explicitly wants a fresh/recalculated number.
+# ══════════════════════════════════════════════════════════════════════════════
+def compute_live_performance_score(employee_id: str, review_id: str = None) -> dict:
+    try:
+        return {"employee_id": employee_id, **predict_performance(employee_id, review_id)}
+    except Exception as e:
+        return {"employee_id": employee_id, "error": str(e)}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 2c — compute_live_burnout_score
+# Purpose : Runs burnout_model_bundle.pkl live against the employee's
+#           CURRENT DB state, instead of reading the last stored row like
+#           get_employee_ml_scores does.
+# Used by : Burnout agent — use when the stored score might be stale, or
+#           the user explicitly wants a fresh/recalculated number.
+# ══════════════════════════════════════════════════════════════════════════════
+def compute_live_burnout_score(employee_id: str) -> dict:
+    try:
+        return {"employee_id": employee_id, **predict_burnout(employee_id)}
+    except Exception as e:
+        return {"employee_id": employee_id, "error": str(e)}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 3 — get_employee_workload
@@ -293,6 +334,36 @@ def find_available_employees(required_skills: str, required_role: str = "", requ
                 return _to_list(rows)
     except Exception as e:
         return [{"error": str(e)}]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 5b — recommend_employees_for_task
+# Purpose : Rank candidate employees for a task using the Task Assignment model. Scores each
+#           candidate on predicted delay risk, skill fit, availability, reliability, and health, and returns a ranked shortlist.
+# Used by : Task assignment agent — use this for model-ranked candidates
+#           instead of/in addition to find_available_employees, which only sorts by historical_performance_score.
+# ══════════════════════════════════════════════════════════════════════════════
+def recommend_employees_for_task(task_id: str, top_n: int = 3) -> list:
+    try:
+        return recommend_top_n(task_id, top_n=top_n)
+    except ValueError as e:
+        return [{"error": str(e)}]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TOOL 5c — score_employee_for_task
+# Purpose : Score one specific (task, employee) pair with the Task Assignment
+#           model — works even for pairs with no assignment history.
+# Used by : Task assignment agent — use this to justify/double-check a
+#           specific candidate the agent (or the user) already has in mind.
+# ══════════════════════════════════════════════════════════════════════════════
+def score_employee_for_task(task_id: str, employee_id: str) -> dict:
+    try:
+        return score_pair(task_id, employee_id)
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": str(e)}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 6 — assign_task
