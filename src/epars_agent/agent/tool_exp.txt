@@ -1,0 +1,149 @@
+1. get_employee_profile
+    Returns the full profile of a single employee including their skills,
+    availability, performance history, and well-being indicators.
+    Args:
+        employee_id: e.g. "EMP001"
+    Returns:
+        Dict with all key employee fields, or {"error": "..."} on failure.
+    Example return:
+        {
+          "employee_id": "EMP042",
+          "full_name": "Priya Sharma",
+          "department": "Engineering",
+          "role": "Software Engineer",
+          "seniority_level": "Mid",
+          "primary_skills": "Python, Django, REST APIs",
+          "secondary_skills": "Docker, PostgreSQL",
+          "weekly_capacity_hours": 40,
+          "is_available": true,
+          "current_project_count": 2,
+          "burnout_risk_score": 38.5,
+          "stress_level": "Low",
+          "historical_performance_score": 74.2,
+          "average_task_completion_rate": 0.88,
+          "collaboration_score": 7.2,
+          "leadership_potential": 6.5
+        }
+
+2. get_employee_ml_scores
+    Returns the latest PEM (performance) score and WBP (burnout) score
+    for a given employee, along with their risk category and trend.
+    Args:
+        employee_id: e.g. "EMP001"
+    Returns:
+        {
+          "employee_id": "EMP042",
+          "pem_score": 74.5,
+          "performance_rating": "Good",
+          "pem_review_date": "2025-10-01",
+          "burnout_score": 0.42,
+          "burnout_category": "Moderate",
+          "burnout_trend": "Worsening",
+          "intervention_urgency": "Medium",
+          "predicted_burnout_30days": 0.55
+        }
+    
+3. get_employee_workload
+    Returns the current active task count, estimated active hours,
+    and the last 7 days of workload history for an employee.
+    Args:
+        employee_id: e.g. "EMP001"
+    Returns:
+        {
+          "employee_id": "EMP042",
+          "active_task_count": 3,
+          "total_estimated_hours_remaining": 28.5,
+          "weekly_capacity_hours": 40,
+          "capacity_used_percent": 71.25,
+          "recent_avg_hours_per_day": 8.4,
+          "recent_avg_overtime_hours": 1.2,
+          "recent_avg_stress_level": "Medium"
+        }
+
+4. get_task_details
+    Returns full details of a task — its required skills, priority,
+    deadline, estimated effort, and current assignment status.
+    Args:
+        task_id: e.g. "TASK0042"
+    Returns:
+        {
+          "task_id": "TASK0042",
+          "project_id": "PROJ010",
+          "task_type": "Development",
+          "priority": "High",
+          "complexity": "Medium",
+          "required_skills": "Python, REST APIs",
+          "required_role": "Software Engineer",
+          "required_seniority": "Mid",
+          "estimated_hours": 16.0,
+          "due_date": "2025-11-15",
+          "status": "Not Started",
+          "assigned_to": null,
+          "is_overdue": false
+        }
+
+5. find_available_employees
+    Finds employees who are available and have matching skills,
+    ranked by performance score descending.
+    Args:
+        required_skills  : Comma-separated skill string e.g. "Python, Django"
+        required_role    : Optional role filter e.g. "Software Engineer"
+        required_seniority: Optional seniority filter e.g. "Senior"
+        limit            : Max number of candidates to return (default 5)
+    Returns:
+        List of candidate dicts with key scores for the agent to evaluate.
+
+6. assign_tasks
+    Creates a task assignment record and updates the task's assigned_to field.
+    Args:
+        task_id           : e.g. "TASK0042"
+        employee_id       : e.g. "EMP042"
+        assignment_method : How the assignment was made (default: "agentic_ai")
+        skill_match_score : 0–100 score of how well skills match (default 0)
+    Returns:
+        {"success": True, "assignment_id": "...", "message": "..."}
+        or {"success": False, "error": "..."}
+
+7. flag_burnout_alert
+    
+    Logs a burnout intervention alert in the burnout_indicators table
+    and reduces the employee's is_available flag if urgency is High.
+    Args:
+        employee_id        : e.g. "EMP042"
+        burnout_score      : current WBP score (0.0–1.0)
+        urgency            : "Low", "Medium", "High", "Critical"
+        recommended_action : Free-text recommendation from the agent
+    Returns:
+        {"success": True, "message": "..."} or {"success": False, "error": "..."}
+
+8. create_calendar_event
+    Creates a calendar event for a task and links it to the most recent
+    task_assignments row for that task/employee pair.
+    Args:
+        task_id    : e.g. "TASK0042"
+        employee_id: e.g. "EMP042"
+        start_time : ISO 8601, e.g. "2026-08-10T10:00:00"
+        end_time   : ISO 8601, e.g. "2026-08-10T12:00:00"
+    Returns:
+        {"success": True, "event_id": "...", "message": "..."}
+        or {"success": False, "error": "..."}
+
+9. rescdule_calendar_event
+    Reschedules the calendar event linked to a task assignment.
+    Args:
+        task_id       : e.g. "TASK0042"
+        employee_id   : e.g. "EMP042"
+        new_start_time: ISO 8601
+        new_end_time  : ISO 8601
+    Returns:
+        {"success": True, "message": "..."} or {"success": False, "error": "..."}
+
+10. cancel_calendar_event
+    Cancels (deletes) the calendar event linked to a task assignment and
+    clears google_event_id on that row.
+    Args:
+        task_id    : e.g. "TASK0042"
+        employee_id: e.g. "EMP042"
+    Returns:
+        {"success": True, "message": "..."} or {"success": False, "error": "..."}
+

@@ -1,0 +1,17 @@
+venv/
+.venv/
+**/__pycache__/
+*.pyc
+
+.env
+**/sa_key.json
+
+dataset/
+docs/
+*.md
+
+.git/
+.gitignore
+
+src/epars_agent/test_trace_*.json
+src/epars_policies/ingestion_log.json

@@ -1,0 +1,22 @@
+# ePARS Agent — Python Dependencies
+
+# Database
+psycopg2-binary>=2.9.9
+python-dotenv>=1.0.0
+pandas>=2.2.0
+
+# LangChain (for Step 3 agent)
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-anthropic>=0.1.0
+langchain-groq>=0.1.0
+langgraph>=0.2.0
+
+# LLM
+anthropic>=0.28.0
+
+# Google Calendar integration (agent/calendar_client.py)
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+
+
