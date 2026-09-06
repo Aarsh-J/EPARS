@@ -17,7 +17,7 @@ export default function TaskAssignment() {
 
         try {
             // Calling the FastAPI endpoint we set up in the backend
-            const response = await fetch(`http://127.0.0.1:8000/api/task_assignment/top_employees/${taskId}?top_n=3`);
+            const response = await fetch(`http://localhost:8000/api/task_assignment/top_employees/${taskId}?top_n=3`);
 
             if (!response.ok) {
                 throw new Error('Task not found or failed to fetch candidates');
