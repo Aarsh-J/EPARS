@@ -247,8 +247,8 @@ def tool_cancel_calendar_event(task_id: str, employee_id: str) -> str:
 TOOLS = [
     tool_get_employee_profile,
     tool_get_employee_ml_scores,
-    compute_live_performance_score,
-    compute_live_burnout_score,
+    tool_compute_live_performance_score,
+    tool_compute_live_burnout_score,
     tool_get_employee_workload,
     tool_get_task_details,
     tool_find_available_employees,
