@@ -235,8 +235,8 @@ export default function Burnout() {
           </thead>
           <tbody>
             {filtered.map((emp) => (
-              <tr className="emp-row" key={emp.employee_id}>
-                <td className="checkbox-col">
+              <tr className="emp-row" key={emp.employee_id} onClick={() => handleAnalyse(emp.employee_id)} style={{ cursor: "pointer" }}>
+                <td className="checkbox-col" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     className="emp-table-checkbox"

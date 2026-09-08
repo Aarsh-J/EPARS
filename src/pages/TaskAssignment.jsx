@@ -225,7 +225,7 @@ export default function TaskAssignment() {
           </thead>
           <tbody>
             {filtered.map((t) => (
-              <tr className="emp-row" key={t.task_id}>
+              <tr className="emp-row" key={t.task_id} onClick={() => handleFindCandidates(t)} style={{ cursor: "pointer" }}>
                 <td className="emp-name">{t.task_id}</td>
                 <td>{t.task_name}</td>
                 <td>{t.task_type}</td>
