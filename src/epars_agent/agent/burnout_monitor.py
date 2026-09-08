@@ -114,7 +114,7 @@ def get_active_tasks_for_employee(employee_id: str) -> list:
         JOIN tasks t ON t.task_id = ta.task_id
         WHERE ta.employee_id = %s
           AND t.status NOT IN ('Completed', 'Cancelled')
-          AND ta.completion_status NOT IN ('Completed', 'Cancelled')
+          AND ta.completion_status NOT IN ('Completed', 'Cancelled', 'Reassigned')
         ORDER BY t.due_date ASC NULLS LAST
     """
     try:
@@ -306,18 +306,29 @@ def execute_decision(employee_id: str, task: dict, decision: dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MAIN LOOP
+# STEP 1 — Find high-burnout employees, log alerts, decide actions (no execution)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_burnout_monitor():
+def run_step1_decide():
+    """
+    Finds high-burnout employees, logs an alert for each, fetches their
+    active tasks, and asks the LLM to decide an action per task.
+
+    Returns a flat list of "pending decisions", one per task:
+        {"employee": {...}, "task": {...}, "decision": {...}}
+
+    No reassignment/reschedule is executed here — that happens in step 2.
+    """
     print("=" * 60)
-    print("ePARS Burnout Monitor — running")
+    print("ePARS Burnout Monitor — STEP 1: gathering decisions")
     print("=" * 60)
+
+    pending_decisions = []
 
     flagged_employees = get_high_burnout_employees()
     if not flagged_employees:
         print("No employees currently at or above the burnout threshold. Nothing to do.")
-        return
+        return pending_decisions
 
     print(f"\nFound {len(flagged_employees)} high-burnout employee(s).\n")
 
@@ -325,7 +336,7 @@ def run_burnout_monitor():
         employee_id = emp["employee_id"]
         print(f"--- {employee_id} ({emp.get('full_name')}) — burnout {emp['burnout_score']:.2f} ---")
 
-        # Log the burnout alert regardless of what action is taken below
+        # Alert logging is informational only — stays automatic in step 1
         alert_result = flag_burnout_alert(
             employee_id=employee_id,
             burnout_score=float(emp["burnout_score"]),
@@ -339,9 +350,13 @@ def run_burnout_monitor():
             print("  No active tasks to rebalance.")
             continue
 
+        task_summary = ", ".join(
+            f"{t['task_id']} ({t.get('task_type')}, due {t.get('due_date')})" for t in tasks
+        )
+        print(f"  Current Tasks: {task_summary}")
+
         for task in tasks:
             task_id = task["task_id"]
-            print(f"\n  Task {task_id} ({task.get('task_type')}, due {task.get('due_date')}):")
 
             # Pull candidates in case reassignment is the right call
             task_full = get_task_details(task_id)
@@ -350,15 +365,73 @@ def run_burnout_monitor():
             candidates = [c for c in candidates if c.get("employee_id") != employee_id]
 
             decision = decide_action_for_task(emp, task, candidates)
-            print(f"    LLM decision: {decision.get('action')} — {decision.get('reasoning')}")
 
-            result = execute_decision(employee_id, task, decision)
-            print(f"    Execution result: {result}")
+            pending_decisions.append({
+                "employee": emp,
+                "task": task,
+                "decision": decision,
+            })
+
+    print("\n" + "=" * 60)
+    print(f"STEP 1 complete. {len(pending_decisions)} task decision(s) gathered.")
+    print("=" * 60)
+
+    return pending_decisions
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STEP 2 — Per-task confirmation, then execute
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_step2_confirm_and_execute(pending_decisions: list):
+    """
+    Walks through each pending decision. For "reassign"/"reschedule" actions,
+    asks the user to confirm (y/n) before executing. "none" actions are just
+    noted — there's nothing to confirm.
+    """
+    print("\n" + "=" * 60)
+    print("ePARS Burnout Monitor — STEP 2: confirm & execute")
+    print("=" * 60)
+
+    if not pending_decisions:
+        print("Nothing to confirm.")
+        return
+
+    for item in pending_decisions:
+        emp = item["employee"]
+        task = item["task"]
+        decision = item["decision"]
+        action = decision.get("action", "none")
+        task_id = task["task_id"]
+
+        print(f"\n--- {emp['employee_id']} ({emp.get('full_name')}) — Task {task_id} "
+              f"({task.get('task_type')}, due {task.get('due_date')}) ---")
+        print(f"  Decision: {action} — {decision.get('reasoning')}")
+
+        if action == "none":
+            print("  No action needed — skipping.")
+            continue
+
+        answer = input(f"  Proceed with '{action}' for {task_id}? [y/N]: ").strip().lower()
+        if answer != "y":
+            print("  Skipped.")
+            continue
+
+        result = execute_decision(emp["employee_id"], task, decision)
+        print(f"  Execution result: {result}")
 
     print("\n" + "=" * 60)
     print("Burnout monitor run complete.")
     print("=" * 60)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_burnout_monitor():
+    pending_decisions = run_step1_decide()
+    run_step2_confirm_and_execute(pending_decisions)
 
 if __name__ == "__main__":
     run_burnout_monitor()
