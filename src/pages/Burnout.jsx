@@ -225,10 +225,6 @@ export default function Burnout() {
               <th>Department</th>
               <th>Role</th>
               <th>Seniority</th>
-              <th className="th-sortable" onClick={toggleSort}>
-                Burnout Score
-                {sortDir && <span className="sort-arrow">{sortDir === "asc" ? "▲" : "▼"}</span>}
-              </th>
               <th>Stored Category</th>
               <th></th>
             </tr>
@@ -251,7 +247,6 @@ export default function Burnout() {
                 <td>
                   <span className="seniority-badge">{emp.seniority}</span>
                 </td>
-                <td>{emp.stored_score ?? "—"}</td>
                 <td>
                   <span className={`score-pill ${categoryClass(emp.stored_category)}`}>
                     {emp.stored_category || "—"}
