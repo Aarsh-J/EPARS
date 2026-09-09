@@ -337,13 +337,14 @@ def run_step1_decide():
         print(f"--- {employee_id} ({emp.get('full_name')}) — burnout {emp['burnout_score']:.2f} ---")
 
         # Alert logging is informational only — stays automatic in step 1
-        alert_result = flag_burnout_alert(
-            employee_id=employee_id,
-            burnout_score=float(emp["burnout_score"]),
-            urgency="High" if emp["burnout_score"] >= 0.85 else "Medium",
-            recommended_action="Reviewed by automated burnout monitor for task rebalancing.",
-        )
-        print(f"  Alert logged: {alert_result.get('success')}")
+        # commented to remove writes in step 1. only reads 
+        # alert_result = flag_burnout_alert(
+        #    employee_id=employee_id,
+        #    burnout_score=float(emp["burnout_score"]),
+        #    urgency="Immediate" if emp["burnout_score"] >= 0.85 else "Recommend",
+        #    recommended_action="Reviewed by automated burnout monitor for task rebalancing.",
+        #)
+        #print(f"  Alert logged: {alert_result.get('success')}")
 
         tasks = get_active_tasks_for_employee(employee_id)
         if not tasks:
@@ -396,17 +397,32 @@ def run_step2_confirm_and_execute(pending_decisions: list):
     if not pending_decisions:
         print("Nothing to confirm.")
         return
+    alerted_employees = set()
 
     for item in pending_decisions:
         emp = item["employee"]
+        employee_id = emp["employee_id"]
         task = item["task"]
         decision = item["decision"]
         action = decision.get("action", "none")
         task_id = task["task_id"]
 
-        print(f"\n--- {emp['employee_id']} ({emp.get('full_name')}) — Task {task_id} "
+        print(f"\n--- {employee_id} ({emp.get('full_name')}) — Task {task_id} "
               f"({task.get('task_type')}, due {task.get('due_date')}) ---")
         print(f"  Decision: {action} — {decision.get('reasoning')}")
+
+        if employee_id not in alerted_employees:
+            ans = input(f"  Log burnout alert for {employee_id}? "
+                        f"(sets is_available=False, stress_level=High, +1 intervention) [y/N]: ").strip().lower()
+            if ans == "y":
+                alert_result = flag_burnout_alert(
+                    employee_id=employee_id,
+                    burnout_score=float(emp["burnout_score"]),
+                    urgency="Immediate" if emp["burnout_score"] >= 0.85 else "Recommend",
+                    recommended_action="Reviewed by automated burnout monitor for task rebalancing.",
+                )
+                print(f"  Alert logged: {alert_result.get('success')}")
+            alerted_employees.add(employee_id)
 
         if action == "none":
             print("  No action needed — skipping.")

@@ -370,7 +370,7 @@ def score_employee_for_task(task_id: str, employee_id: str) -> dict:
 # Purpose : Write a new task assignment record to the database.
 # Used by : Task assignment agent (the actual write action).
 # ══════════════════════════════════════════════════════════════════════════════
-def assign_task(task_id: str, employee_id: str, assignment_method: str = "agentic_ai", skill_match_score: float = 0.0) -> dict:
+def assign_task(task_id: str, employee_id: str, assignment_method: str = "AI-Recommended", skill_match_score: float = 0.0) -> dict:
     next_id_sql = """
         SELECT COALESCE(MAX(CAST(SUBSTRING(assignment_id FROM 4) AS INTEGER)), 0) AS max_num
         FROM task_assignments
@@ -395,7 +395,7 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
             CURRENT_DATE,
             %s,
             %s,
-            'Assigned'
+            'In Progress'
         FROM tasks t
         WHERE t.task_id = %s
         RETURNING assignment_id
@@ -416,6 +416,15 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
         SET completion_status = 'Reassigned'
         WHERE task_id = %s AND completion_status NOT IN ('Completed', 'Cancelled', 'Reassigned')
     """
+    get_old_owner_sql = """
+        SELECT employee_id FROM task_assignments
+        WHERE task_id = %s AND completion_status NOT IN ('Completed', 'Cancelled', 'Reassigned')
+    """
+    update_old_employee_sql = """
+        UPDATE employees
+        SET current_project_count = GREATEST(current_project_count - 1, 0)
+        WHERE employee_id = %s
+    """
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -423,7 +432,13 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
                 max_row = cur.fetchone()
                 next_num = (max_row["max_num"] if max_row else 0) + 1
                 new_id = f"ASG{next_num:04d}"
+                cur.execute(get_old_owner_sql, (task_id,))
+                old_owner_row = cur.fetchone()
+                old_owner_id = old_owner_row["employee_id"] if old_owner_row else None
+
                 cur.execute(supersede_sql, (task_id,))
+                if old_owner_id:
+                    cur.execute(update_old_employee_sql, (old_owner_id,))
 
                 cur.execute(insert_sql, (new_id, task_id, employee_id, assignment_method, skill_match_score, task_id))
                 row = cur.fetchone()
@@ -761,7 +776,7 @@ try:
         description=(
             "Logs a burnout intervention alert for an employee and updates their "
             "availability status. Input format: "
-            "'employee_id=EMP042|burnout_score=0.75|urgency=High|recommended_action=Reduce workload and schedule 1-1' "
+            "'employee_id=EMP042|burnout_score=0.75|urgency=Immediate|recommended_action=Reduce workload and schedule 1-1' "
             "Call this when the WBP burnout score is above 0.70 or when the agent "
             "determines immediate intervention is required."
         ),
