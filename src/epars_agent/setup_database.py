@@ -135,6 +135,11 @@ CREATE TABLE IF NOT EXISTS projects (
 """,
 
 # ── 3. tasks ──────────────────────────────────────────────────────────────────
+# required_certifications: not in the original dataset CSVs (always NULL there
+# too), but modules/ml/task_assignment_features.py reads it as a real column
+# (has_cert_req feature) — added here to close that gap. Existing rows will
+# just have NULL/0 for this feature, same as if it had always been populated
+# with no certification requirements.
 """
 CREATE TABLE IF NOT EXISTS tasks (
     task_id                  VARCHAR(20)  PRIMARY KEY,
@@ -148,6 +153,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     actual_hours             NUMERIC(8,2),
     story_points             INTEGER,
     required_skills          TEXT,
+    required_certifications  TEXT,
     required_role            VARCHAR(100),
     required_seniority       VARCHAR(50),
     assigned_to              VARCHAR(20),
@@ -179,6 +185,12 @@ CREATE TABLE IF NOT EXISTS tasks (
 """,
 
 # ── 4. task_assignments ───────────────────────────────────────────────────────
+# google_event_id: not in the original dataset CSVs — written/read at runtime
+# by src/epars_agent/agent/tools.py's calendar-sync tools (create/reschedule/
+# cancel_calendar_event) and read by modules/ml/reassignment.py /
+# src/epars_agent/agent/burnout_monitor.py when looking up an employee's
+# active tasks. Missing entirely was a silent gap until a High/Critical
+# burnout assessment actually generated a reassignment recommendation.
 """
 CREATE TABLE IF NOT EXISTS task_assignments (
     assignment_id                VARCHAR(20)  PRIMARY KEY,
@@ -204,6 +216,7 @@ CREATE TABLE IF NOT EXISTS task_assignments (
     on_time_completion           BOOLEAN,
     efficiency_score             NUMERIC(6,2),
     assignment_satisfaction      INTEGER,
+    google_event_id              TEXT,
     created_at                   TIMESTAMP,
     last_updated                 TIMESTAMP
 )
@@ -438,6 +451,71 @@ CREATE TABLE IF NOT EXISTS burnout_indicators (
     intervention_effectiveness    NUMERIC(6,2),
     created_at                    TIMESTAMP,
     last_updated                  TIMESTAMP
+)
+""",
+
+# ── 11. performance_ai_evaluations ────────────────────────────────────────────
+# Not part of the original synthetic dataset — written at runtime by
+# modules/performance/routes.py (/finalize) whenever a manager accepts or
+# edits an AI-suggested performance score. Was missing from this DDL list
+# entirely (app-level gap, not dataset-related), which surfaced as
+# 'relation "performance_ai_evaluations" does not exist' on GET /api/performance/employees.
+"""
+CREATE TABLE IF NOT EXISTS performance_ai_evaluations (
+    evaluation_id       VARCHAR(20)  PRIMARY KEY,
+    employee_id         VARCHAR(20),
+    review_id           VARCHAR(20),
+    ai_predicted_score  NUMERIC(6,2),
+    ai_confidence       TEXT,
+    ai_justification    TEXT,
+    policy_citation     TEXT,
+    manager_decision    VARCHAR(20),
+    final_score         NUMERIC(6,2),
+    manager_note        TEXT,
+    decided_at          TIMESTAMP,
+    created_at          TIMESTAMP
+)
+""",
+
+# ── 12. burnout_ai_assessments ────────────────────────────────────────────────
+# Same gap as performance_ai_evaluations above — written by
+# modules/ml/reassignment.py (assess_and_recommend) and modules/burnout/routes.py
+# (/analyse, /assessments/{id}/verify). Confidence-gated: high -> 'applied',
+# medium -> 'pending_review', low -> 'informational'; a manager can later
+# promote 'pending_review' to 'verified'.
+"""
+CREATE TABLE IF NOT EXISTS burnout_ai_assessments (
+    assessment_id       VARCHAR(20)  PRIMARY KEY,
+    employee_id         VARCHAR(20),
+    ai_predicted_class  VARCHAR(50),
+    ai_probabilities    TEXT,
+    confidence          VARCHAR(20),
+    justification       TEXT,
+    status              VARCHAR(20),
+    reviewed_at         TIMESTAMP,
+    created_at          TIMESTAMP
+)
+""",
+
+# ── 13. task_reassignment_recommendations ─────────────────────────────────────
+# Same gap again — written by modules/ml/reassignment.py
+# (_generate_recommendations) for each active task of a flagged employee, and
+# updated by modules/burnout/routes.py (/recommendations/{id}/decide) once a
+# manager confirms or rejects one ("team formation"-style rebalancing).
+"""
+CREATE TABLE IF NOT EXISTS task_reassignment_recommendations (
+    recommendation_id    VARCHAR(20)  PRIMARY KEY,
+    assessment_id        VARCHAR(20),
+    employee_id           VARCHAR(20),
+    task_id               VARCHAR(20),
+    action                VARCHAR(50),
+    target_employee_id    VARCHAR(20),
+    new_start_time        TIMESTAMP,
+    new_end_time          TIMESTAMP,
+    reasoning             TEXT,
+    manager_decision      VARCHAR(20),
+    executed_at           TIMESTAMP,
+    created_at            TIMESTAMP
 )
 """,
 
