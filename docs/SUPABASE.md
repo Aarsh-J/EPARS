@@ -3,6 +3,10 @@
 This is the shared Postgres database for ePARS. All 4 devs point their local `.env` at the same
 Supabase project instead of running their own local Postgres.
 
+> **Note:** there is now a second, separate Supabase project for a small prod/demo dataset —
+> see [§5 Prod demo project](#5-prod-demo-project-separate-from-shared-dev) at the bottom of this
+> doc. Everything below this point (§1-4) is about the shared **dev** project.
+
 - **Project ref:** `hkxztnlcutzrwsfqoqvg`
 - **Dashboard:** https://supabase.com/dashboard/project/hkxztnlcutzrwsfqoqvg
 - **Region:** whatever was picked at project creation (check dashboard → Project Settings → General)
@@ -212,3 +216,72 @@ the DB at the same time.
 | Enable pgvector (one-time) | `CREATE EXTENSION IF NOT EXISTS vector;` in SQL editor |
 | Re-ingest policy docs into pgvector | `python epars_policies/ingest_policies.py` |
 | Query policies from Python | `from rag_query import query_policies, format_policy_context` |
+
+---
+
+## 5. Prod demo project (separate from shared dev)
+
+A second, separate Supabase project (ref `cafovbiqatqttufejjzr`, org same as dev) holds a small
+**35-employee** dataset for manually checking ML model predictions and for reviewer demos, kept
+fully isolated from the dev project's ongoing churn (1,500 employees, changing as the team works).
+
+### 5.1 Why a subset instead of freshly-generated data
+
+The original plan was to generate a fresh small dataset with the repo's dataset-generator code
+(`code/Dataset Generator/` on the `preprocessor` and `dataset-branch` branches). That was
+abandoned after discovering the generator's raw output doesn't match what's actually loaded in
+`dataset/`: `technical_proficiency_score`, `domain_expertise_score`, and `leadership_potential`
+come out of the generator on a 1-10 scale, but the real loaded data (and the burnout model's
+`live_medians` in `ml_models/burnout_model_metadata.json`, which the model was calibrated against)
+are on a ~0-100 scale — plus assorted column drift (extra/missing fields) on top. Rather than
+risk an undiscovered scale/schema mismatch elsewhere (tasks, reviews, feedback — not fully
+audited), the prod dataset is instead a **referentially-consistent subset of the real
+`dataset/*.csv` files**, guaranteeing correct scale/schema since it's literally the same
+production-calibrated data.
+
+### 5.2 How it was built
+
+`scripts/make_prod_subset.py` (repo root of `EPARS-backend`):
+1. Picks 5 employees per department (35 total, all 7 departments covered) from `dataset/employees.csv`,
+   seeded (`random.Random(42)`) for reproducibility.
+2. Filters every other table down to rows that actually reference those 35 employees (direct
+   `employee_id` columns; `task_assignments` → referenced tasks/projects; `team_formations` →
+   lead or member match; `projects` → manager, team-member list, or any kept task/team).
+3. Writes the result to `dataset-prod/` — committed to the repo, same as `dataset/` (small: 35
+   employees and everything referencing them, a few MB at most).
+
+Re-run it any time to regenerate `dataset-prod/` from the current `dataset/` (e.g. with a
+different `PER_DEPT` or `SEED`).
+
+**Known caveat:** because `task_assignments` and `tasks.assigned_to` are only loosely linked in
+the source data (an assignment history record can reference a different employee than the task's
+current primary assignee), the prod `tasks` table includes some tasks whose `assigned_to` is
+*not* one of the 35 loaded employees — a per-employee task list view for those tasks would look
+empty/dangling. This is inherited from the same looseness already present in the full dev dataset,
+not something introduced by subsetting.
+
+### 5.3 Connecting to it
+
+- **Direct `:5432` host times out from some networks** (it's IPv6-only) — use the **session
+  pooler** connection string instead (Project Settings → Database → Connection Pooling → Session
+  mode, port 5432, host `aws-0-<region>.pooler.supabase.com`). Stored locally as `DATABASE_URL` in
+  `.env.prod` (gitignored, never committed) — separate from the shared dev `.env`.
+- `setup_database.py` now respects a `CSV_DIR` env var (defaults to `dataset/` if unset) so the
+  same script can load either dataset depending on which `DATABASE_URL`/`CSV_DIR` pair you export:
+  ```
+  export DATABASE_URL=<prod pooler connection string>
+  export CSV_DIR="$(pwd)/dataset-prod"
+  python epars_agent/setup_database.py
+  ```
+- Policy docs (`policy_chunks` / pgvector) were ingested identically to dev — they're global,
+  not employee-specific — by running `python ingest_policies.py` from inside `epars_policies/`
+  with `DATABASE_URL` pointed at the prod project.
+- **Don't re-run the CSV load** against this project without truncating first — same duplicate-row
+  caveat as dev (§2.4).
+
+### 5.4 Not yet done
+
+Separate prod hosting (a Render web service from the `prod-backend` branch, a Vercel project from
+`prod-frontend`, both pointed at this project's `DATABASE_URL`) is intentionally out of scope for
+now — this project is currently only reachable by pointing a local `.env` at it. Revisit when
+ready for a reviewer-facing deployed demo.

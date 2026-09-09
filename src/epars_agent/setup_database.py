@@ -29,8 +29,10 @@ load_dotenv()
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 # Resolved relative to this file (src/epars_agent/) rather than CWD, so it works
-# regardless of where `python setup_database.py` is run from.
-CSV_DIR = str(Path(__file__).resolve().parent.parent.parent / "dataset")
+# regardless of where `python setup_database.py` is run from. Override with the
+# CSV_DIR env var to load a different dataset folder (e.g. dataset-prod/) against
+# a different DATABASE_URL.
+CSV_DIR = os.getenv("CSV_DIR", str(Path(__file__).resolve().parent.parent.parent / "dataset"))
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
