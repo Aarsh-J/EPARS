@@ -336,16 +336,6 @@ def run_step1_decide():
         employee_id = emp["employee_id"]
         print(f"--- {employee_id} ({emp.get('full_name')}) — burnout {emp['burnout_score']:.2f} ---")
 
-        # Alert logging is informational only — stays automatic in step 1
-        # commented to remove writes in step 1. only reads 
-        # alert_result = flag_burnout_alert(
-        #    employee_id=employee_id,
-        #    burnout_score=float(emp["burnout_score"]),
-        #    urgency="Immediate" if emp["burnout_score"] >= 0.85 else "Recommend",
-        #    recommended_action="Reviewed by automated burnout monitor for task rebalancing.",
-        #)
-        #print(f"  Alert logged: {alert_result.get('success')}")
-
         tasks = get_active_tasks_for_employee(employee_id)
         if not tasks:
             print("  No active tasks to rebalance.")
