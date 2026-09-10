@@ -1,0 +1,12 @@
+{
+    "employee_id": "EMP109",
+    "predicted_score": 65.75,
+    "rating": "Meets Expectations",
+    "previous_performance_scores": [
+        64.9,
+        57.3,
+        63.9,
+        57.1,
+        62.8
+    ]
+}

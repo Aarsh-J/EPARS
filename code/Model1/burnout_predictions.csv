@@ -1,0 +1,2 @@
+employee_id,first_name,last_name,department,role,seniority_level,burnout_score,risk_category,low_threshold,medium_threshold,late_hours_frequency,vacation_days_unused,job_satisfaction,role_ambiguity,stress_load,pressure_index
+EMP001,Jordan,Nair,Engineering,Team Lead,Mid,25.54,Medium,19.48,37.78,2,5,7,0,1.0,2
