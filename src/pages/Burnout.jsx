@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { getBurnoutEmployees, analyseBurnout, verifyBurnoutAssessment, decideReassignment } from "../api/client.js";
+import {
+  getBurnoutEmployees,
+  getBurnoutEmployeeDetail,
+  analyseBurnout,
+  verifyBurnoutAssessment,
+  decideReassignment,
+} from "../api/client.js";
 import { useEmployeeTableControls } from "../hooks/useEmployeeTableControls.js";
 
 function categoryClass(category) {
@@ -16,6 +22,8 @@ export default function Burnout() {
 
   const [selectedId, setSelectedId] = useState(null);
   const [result, setResult] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
   const [analysing, setAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState(null);
 
@@ -50,15 +58,46 @@ export default function Burnout() {
       .catch((err) => setLoadError(err.message));
   }, []);
 
-  function handleAnalyse(employeeId) {
+  function patchEmployeeCategory(employeeId, category) {
+    setEmployees((prev) =>
+      prev.map((e) => (e.employee_id === employeeId ? { ...e, stored_category: category } : e))
+    );
+  }
+
+  function openDetail(employeeId) {
     setSelectedId(employeeId);
-    setAnalysing(true);
+    setDetailLoading(true);
+    setDetailError(null);
     setAnalyseError(null);
     setResult(null);
-    analyseBurnout(employeeId)
+    getBurnoutEmployeeDetail(employeeId)
       .then(setResult)
+      .catch((err) => setDetailError(err.message))
+      .finally(() => setDetailLoading(false));
+  }
+
+  function handleRunAnalysis(employeeId) {
+    setAnalysing(true);
+    setAnalyseError(null);
+    analyseBurnout(employeeId)
+      .then((data) => {
+        setResult(data);
+        if (data.status === "applied") {
+          patchEmployeeCategory(employeeId, data.predicted_class);
+        }
+      })
       .catch((err) => setAnalyseError(err.message))
       .finally(() => setAnalysing(false));
+  }
+
+  // "Analyse" button — runs the model immediately instead of opening the
+  // no-model detail view first (that's what the row click does).
+  function handleAnalyseNow(employeeId) {
+    setSelectedId(employeeId);
+    setDetailLoading(false);
+    setDetailError(null);
+    setResult(null);
+    handleRunAnalysis(employeeId);
   }
 
   const BULK_CONCURRENCY = 8;
@@ -87,6 +126,12 @@ export default function Burnout() {
     }
     await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, ids.length) }, worker));
 
+    for (const o of outcomes) {
+      if (o.success && o.data.status === "applied") {
+        patchEmployeeCategory(o.employee_id, o.data.predicted_class);
+      }
+    }
+
     setBulkResults(outcomes);
     setBulkRunning(false);
     clearSelection();
@@ -95,6 +140,7 @@ export default function Burnout() {
   function resetView() {
     setSelectedId(null);
     setResult(null);
+    setDetailError(null);
     setAnalyseError(null);
   }
 
@@ -126,14 +172,30 @@ export default function Burnout() {
   if (selectedId) {
     return (
       <div id="results-panel">
-        {analysing && (
+        {detailLoading && (
+          <div className="loading-wrap">
+            <div className="spinner" />
+            <p>Loading employee details…</p>
+          </div>
+        )}
+
+        {analysing && !result && (
           <div className="loading-wrap">
             <div className="spinner" />
             <p>Running analysis…</p>
           </div>
         )}
 
-        {!analysing && analyseError && (
+        {!detailLoading && detailError && (
+          <div className="card">
+            <p>{detailError}</p>
+            <button className="btn-secondary" onClick={resetView} style={{ marginTop: "1rem" }}>
+              ← Back to employee list
+            </button>
+          </div>
+        )}
+
+        {!analysing && analyseError && !result && (
           <div className="card">
             <p>{analyseError}</p>
             <button className="btn-secondary" onClick={resetView} style={{ marginTop: "1rem" }}>
@@ -142,7 +204,16 @@ export default function Burnout() {
           </div>
         )}
 
-        {!analysing && result && <ResultContent data={result} onBack={resetView} />}
+        {!detailLoading && result && (
+          <ResultContent
+            data={result}
+            onRunAnalysis={handleRunAnalysis}
+            analysing={analysing}
+            analyseError={analyseError}
+            onVerified={patchEmployeeCategory}
+            onBack={resetView}
+          />
+        )}
       </div>
     );
   }
@@ -231,7 +302,7 @@ export default function Burnout() {
           </thead>
           <tbody>
             {filtered.map((emp) => (
-              <tr className="emp-row" key={emp.employee_id} onClick={() => handleAnalyse(emp.employee_id)} style={{ cursor: "pointer" }}>
+              <tr className="emp-row" key={emp.employee_id} onClick={() => openDetail(emp.employee_id)} style={{ cursor: "pointer" }}>
                 <td className="checkbox-col" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
@@ -253,7 +324,13 @@ export default function Burnout() {
                   </span>
                 </td>
                 <td>
-                  <button className="btn-analyse" onClick={() => handleAnalyse(emp.employee_id)}>
+                  <button
+                    className="btn-analyse"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAnalyseNow(emp.employee_id);
+                    }}
+                  >
                     Analyse
                   </button>
                 </td>
@@ -266,20 +343,33 @@ export default function Burnout() {
   );
 }
 
-function ResultContent({ data, onBack }) {
+function ResultContent({ data, onRunAnalysis, analysing, analyseError, onVerified, onBack }) {
   const emp = data.employee;
   const initials = emp.employee_id.slice(-3);
 
-  const [status, setStatus] = useState(data.status);
+  const [verifiedOverride, setVerifiedOverride] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState(null);
-  const [dismissed, setDismissed] = useState(false);
+
+  // A fresh analysis run (new assessment_id) starts a new session — clear any
+  // verify/dismiss decision made on a previous assessment.
+  useEffect(() => {
+    setVerifiedOverride(false);
+    setDismissed(false);
+  }, [data.assessment_id]);
+
+  const hasPrediction = data.predicted_class != null;
+  const status = verifiedOverride ? "verified" : data.status;
 
   function handleVerify() {
     setVerifying(true);
     setVerifyError(null);
     verifyBurnoutAssessment(data.assessment_id)
-      .then(() => setStatus("verified"))
+      .then(() => {
+        setVerifiedOverride(true);
+        onVerified?.(emp.employee_id, data.predicted_class);
+      })
       .catch((err) => setVerifyError(err.message))
       .finally(() => setVerifying(false));
   }
@@ -295,28 +385,33 @@ function ResultContent({ data, onBack }) {
           </p>
         </div>
         <div className="score-hero">
-          <div className="score-circle" style={{ borderColor: data.predicted_class_color }}>
-            <span>{data.predicted_class}</span>
+          <div className="score-circle" style={{ borderColor: hasPrediction ? data.predicted_class_color : "#94a3b8" }}>
+            <span>{hasPrediction ? data.predicted_class : data.stored_category || "Unrated"}</span>
           </div>
-          <p style={{ color: data.predicted_class_color }}>
-            <span className={`confidence-badge confidence-${data.confidence}`}>
-              {data.confidence} confidence
-            </span>{" "}
-            ({data.real_feature_count}/{data.total_feature_count} inputs real)
-          </p>
-          {status === "applied" && <span className="status-badge status-recorded">Auto-applied · recorded</span>}
-          {status === "verified" && <span className="status-badge status-recorded">Verified · recorded</span>}
-          {status === "pending_review" && !dismissed && (
+          {hasPrediction ? (
+            <p style={{ color: data.predicted_class_color }}>
+              <span className={`confidence-badge confidence-${data.confidence}`}>
+                {data.confidence} confidence
+              </span>{" "}
+              ({data.real_feature_count}/{data.total_feature_count} inputs real)
+            </p>
+          ) : (
+            <p style={{ color: "#64748b" }}>Recorded status — no AI analysis run yet</p>
+          )}
+          {!hasPrediction && <span className="status-badge status-recorded">Recorded status</span>}
+          {hasPrediction && status === "applied" && <span className="status-badge status-recorded">Auto-applied · recorded</span>}
+          {hasPrediction && status === "verified" && <span className="status-badge status-recorded">Verified · recorded</span>}
+          {hasPrediction && status === "pending_review" && !dismissed && (
             <span className="status-badge status-pending">Pending manager review</span>
           )}
-          {status === "pending_review" && dismissed && (
+          {hasPrediction && status === "pending_review" && dismissed && (
             <span className="status-badge status-dismissed">Dismissed · not recorded</span>
           )}
-          {status === "informational" && (
+          {hasPrediction && status === "informational" && (
             <span className="status-badge status-informational">Informational only</span>
           )}
 
-          {data.stored_category && (
+          {hasPrediction && data.stored_category && (
             <div className="score-compare">
               <div className="score-compare-row">
                 <span className="score-compare-label">Old stored assessment</span>
@@ -340,52 +435,72 @@ function ResultContent({ data, onBack }) {
 
       <div className="card" id="justification-card">
         <h3 className="card-title">AI Justification</h3>
-        <p>{data.justification}</p>
-        {data.policy_citation && (
-          <p className="live-score-note">Policy reference: {data.policy_citation}</p>
-        )}
-
-        {status === "applied" && (
-          <p style={{ marginTop: "1rem" }}>
-            <strong>Auto-applied</strong> — high confidence, so this is now the employee's current
-            recorded burnout status.
+        {hasPrediction ? (
+          <>
+            <p>{data.justification}</p>
+            {data.policy_citation && (
+              <p className="live-score-note">Policy reference: {data.policy_citation}</p>
+            )}
+          </>
+        ) : (
+          <p className="live-score-note">
+            No AI analysis has been run yet. Run the burnout model to get an AI-predicted risk
+            category and justification.
           </p>
         )}
 
-        {status === "informational" && (
-          <p style={{ marginTop: "1rem", color: "#64748b" }}>
-            Low confidence — this prediction leans heavily on defaults rather than this
-            employee's real data. No score has been applied and no reassignment was suggested;
-            this is informational only, entirely your call.
-          </p>
-        )}
-
-        {status === "verified" && (
-          <p style={{ marginTop: "1rem" }}>
-            <strong>Verified</strong> — you've confirmed this is now the employee's current
-            recorded burnout status.
-          </p>
-        )}
-
-        {status === "pending_review" && !dismissed && (
+        {!hasPrediction ? (
           <div style={{ marginTop: "1rem" }}>
-            <p>
-              <strong>Medium confidence</strong> — please check this score before it becomes the
-              employee's current recorded status.
-            </p>
-            {verifyError && <p style={{ color: "#991b1b" }}>{verifyError}</p>}
-            <button className="btn-analyse" disabled={verifying} onClick={handleVerify}>
-              Verify Score
-            </button>{" "}
-            <button className="btn-secondary" disabled={verifying} onClick={() => setDismissed(true)}>
-              Dismiss
+            {analyseError && <p style={{ color: "#991b1b" }}>{analyseError}</p>}
+            <button className="btn-analyse" disabled={analysing} onClick={() => onRunAnalysis(emp.employee_id)}>
+              {analysing ? "Running…" : "Run Burnout Analysis"}
             </button>
           </div>
-        )}
-        {status === "pending_review" && dismissed && (
-          <p style={{ marginTop: "1rem", color: "#64748b" }}>
-            Dismissed — left as pending, not applied as the current status.
-          </p>
+        ) : (
+          <>
+            {status === "applied" && (
+              <p style={{ marginTop: "1rem" }}>
+                <strong>Auto-applied</strong> — high confidence, so this is now the employee's current
+                recorded burnout status.
+              </p>
+            )}
+
+            {status === "informational" && (
+              <p style={{ marginTop: "1rem", color: "#64748b" }}>
+                Low confidence — this prediction leans heavily on defaults rather than this
+                employee's real data. No score has been applied and no reassignment was suggested;
+                this is informational only, entirely your call.
+              </p>
+            )}
+
+            {status === "verified" && (
+              <p style={{ marginTop: "1rem" }}>
+                <strong>Verified</strong> — you've confirmed this is now the employee's current
+                recorded burnout status.
+              </p>
+            )}
+
+            {status === "pending_review" && !dismissed && (
+              <div style={{ marginTop: "1rem" }}>
+                <p>
+                  <strong>Medium confidence</strong> — please check this score before it becomes the
+                  employee's current recorded status.
+                </p>
+                {verifyError && <p style={{ color: "#991b1b" }}>{verifyError}</p>}
+                <button className="btn-analyse" disabled={verifying} onClick={handleVerify}>
+                  Verify Score
+                </button>{" "}
+                <button className="btn-secondary" disabled={verifying} onClick={() => setDismissed(true)}>
+                  Dismiss
+                </button>
+              </div>
+            )}
+            {status === "pending_review" && dismissed && (
+              <p style={{ marginTop: "1rem", color: "#64748b" }}>
+                Dismissed — left as pending, not applied as the current status.
+              </p>
+            )}
+          </>
         )}
       </div>
 

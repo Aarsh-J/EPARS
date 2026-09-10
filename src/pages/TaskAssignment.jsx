@@ -72,18 +72,35 @@ export default function TaskAssignment() {
     setFilters({});
   }
 
-  function handleFindCandidates(task) {
+  function openTaskDetail(task) {
     setSelectedTask(task);
     setCandidates(null);
     setRankError(null);
     setAdHocResult(null);
     setAdHocError(null);
     setAdHocEmployeeId("");
+  }
+
+  function handleRunRanking(taskId = selectedTask?.task_id) {
+    if (!taskId) return;
+    setRankError(null);
     setRanking(true);
-    recommendForTask(task.task_id, 5)
+    recommendForTask(taskId, 5)
       .then(setCandidates)
       .catch((err) => setRankError(err.message))
       .finally(() => setRanking(false));
+  }
+
+  // "Find Candidates" button — runs the model immediately instead of opening
+  // the no-model detail view first (that's what the row click does).
+  function handleFindCandidatesNow(task) {
+    setSelectedTask(task);
+    setCandidates(null);
+    setRankError(null);
+    setAdHocResult(null);
+    setAdHocError(null);
+    setAdHocEmployeeId("");
+    handleRunRanking(task.task_id);
   }
 
   function handleAdHocScore() {
@@ -116,16 +133,24 @@ export default function TaskAssignment() {
           </div>
         </div>
 
+        {!ranking && !candidates && (
+          <div className="card">
+            <h3 className="card-title">Candidate Ranking</h3>
+            <p className="live-score-note">
+              No candidate ranking has been run yet for this task. Run the model to rank employees
+              by fit.
+            </p>
+            {rankError && <p style={{ color: "#991b1b", marginTop: "0.5rem" }}>{rankError}</p>}
+            <button className="btn-analyse" style={{ marginTop: "0.75rem" }} onClick={handleRunRanking}>
+              Run Candidate Ranking
+            </button>
+          </div>
+        )}
+
         {ranking && (
           <div className="loading-wrap">
             <div className="spinner" />
             <p>Ranking candidates…</p>
-          </div>
-        )}
-
-        {!ranking && rankError && (
-          <div className="card">
-            <p style={{ color: "#991b1b" }}>{rankError}</p>
           </div>
         )}
 
@@ -225,7 +250,7 @@ export default function TaskAssignment() {
           </thead>
           <tbody>
             {filtered.map((t) => (
-              <tr className="emp-row" key={t.task_id} onClick={() => handleFindCandidates(t)} style={{ cursor: "pointer" }}>
+              <tr className="emp-row" key={t.task_id} onClick={() => openTaskDetail(t)} style={{ cursor: "pointer" }}>
                 <td className="emp-name">{t.task_id}</td>
                 <td>{t.task_name}</td>
                 <td>{t.task_type}</td>
@@ -234,7 +259,13 @@ export default function TaskAssignment() {
                 <td>{t.due_date ?? "—"}</td>
                 <td>{t.status}</td>
                 <td>
-                  <button className="btn-analyse" onClick={() => handleFindCandidates(t)}>
+                  <button
+                    className="btn-analyse"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFindCandidatesNow(t);
+                    }}
+                  >
                     Find Candidates
                   </button>
                 </td>

@@ -16,6 +16,10 @@ export function getEmployees() {
   return request("/api/performance/employees");
 }
 
+export function getEmployeeDetail(employeeId) {
+  return request(`/api/performance/employees/${encodeURIComponent(employeeId)}`);
+}
+
 export function analyseEmployee(employeeId, reviewId = null) {
   return request("/api/performance/analyse", {
     method: "POST",
@@ -46,6 +50,10 @@ export function getPastEvaluations(employeeId) {
 
 export function getBurnoutEmployees() {
   return request("/api/burnout/employees");
+}
+
+export function getBurnoutEmployeeDetail(employeeId) {
+  return request(`/api/burnout/employees/${encodeURIComponent(employeeId)}`);
 }
 
 export function analyseBurnout(employeeId) {
