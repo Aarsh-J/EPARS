@@ -72,31 +72,35 @@ def list_employees():
     return rows
 
 
-class AnalyseRequest(BaseModel):
-    employee_id: str
-
-
-@router.post("/analyse")
-def analyse_employee(body: AnalyseRequest):
-    profile = get_employee_profile(body.employee_id)
+def _stored_burnout(employee_id: str) -> dict:
+    """
+    The employee's current recorded burnout status — same "applied/verified
+    assessment overrides the raw table" preference as list_employees' query
+    above, so this matches what the selector table shows.
+    """
+    profile = get_employee_profile(employee_id)
     if "error" in profile:
         raise HTTPException(status_code=404, detail=profile["error"])
 
-    try:
-        result = assess_and_recommend(body.employee_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
     stored_sql = """
-        SELECT overall_burnout_risk AS stored_score, burnout_category AS stored_category
-        FROM burnout_indicators
-        WHERE employee_id = %s
-        ORDER BY assessment_date DESC
+        SELECT
+            bi.overall_burnout_risk AS stored_score,
+            COALESCE(ai.ai_predicted_class, bi.burnout_category) AS stored_category
+        FROM burnout_indicators bi
+        LEFT JOIN LATERAL (
+            SELECT ai_predicted_class
+            FROM burnout_ai_assessments
+            WHERE employee_id = bi.employee_id AND status IN ('applied', 'verified')
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) ai ON true
+        WHERE bi.employee_id = %s
+        ORDER BY bi.assessment_date DESC
         LIMIT 1
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(stored_sql, (body.employee_id,))
+            cur.execute(stored_sql, (employee_id,))
             stored = cur.fetchone()
 
     return {
@@ -106,6 +110,50 @@ def analyse_employee(body: AnalyseRequest):
             "department": profile["department"],
             "seniority": profile["seniority_level"],
         },
+        "stored_score": round(float(stored["stored_score"]), 1) if stored and stored["stored_score"] is not None else None,
+        "stored_category": stored["stored_category"] if stored else None,
+    }
+
+
+@router.get("/employees/{employee_id}")
+def get_employee_detail(employee_id: str):
+    """
+    Current recorded burnout state for the detail view — no ML model
+    invocation. The frontend calls /analyse separately when the user
+    explicitly asks to run the burnout analysis.
+    """
+    base = _stored_burnout(employee_id)
+    return {
+        **base,
+        "assessment_id": None,
+        "predicted_class": None,
+        "predicted_class_color": None,
+        "predicted_probabilities": None,
+        "confidence": None,
+        "real_feature_count": None,
+        "total_feature_count": None,
+        "justification": None,
+        "policy_citation": None,
+        "status": None,
+        "recommendations": [],
+    }
+
+
+class AnalyseRequest(BaseModel):
+    employee_id: str
+
+
+@router.post("/analyse")
+def analyse_employee(body: AnalyseRequest):
+    base = _stored_burnout(body.employee_id)
+
+    try:
+        result = assess_and_recommend(body.employee_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        **base,
         "assessment_id": result["assessment_id"],
         "predicted_class": result["predicted_class"],
         "predicted_class_color": _CLASS_COLOR.get(result["predicted_class"], "#64748b"),
@@ -117,8 +165,6 @@ def analyse_employee(body: AnalyseRequest):
         "policy_citation": result["policy_citation"],
         "status": result["status"],
         "recommendations": result["recommendations"],
-        "stored_score": round(float(stored["stored_score"]), 1) if stored and stored["stored_score"] is not None else None,
-        "stored_category": stored["stored_category"] if stored else None,
     }
 
 

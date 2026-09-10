@@ -120,27 +120,22 @@ def _latest_ai_evaluation(employee_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-class AnalyseRequest(BaseModel):
-    employee_id: str
-    review_id: str | None = None
-
-
-@router.post("/analyse")
-def analyse_employee(body: AnalyseRequest):
-    profile = get_employee_profile(body.employee_id)
+def _employee_detail_base(employee_id: str) -> dict:
+    """
+    Everything about an employee's current recorded performance state that
+    doesn't require running the ML model: profile, review history, the
+    latest manager decision (if any), and the resulting recorded score.
+    Shared by GET /employees/{id} (no model run) and POST /analyse (which
+    layers a live prediction on top).
+    """
+    profile = get_employee_profile(employee_id)
     if "error" in profile:
         raise HTTPException(status_code=404, detail=profile["error"])
 
-    ml_scores = get_employee_ml_scores(body.employee_id)
+    ml_scores = get_employee_ml_scores(employee_id)
     try:
-        reviews = _review_history(body.employee_id)
-        latest_eval = _latest_ai_evaluation(body.employee_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    try:
-        live = predict_performance(body.employee_id, body.review_id)
-        signals = get_score_signals(body.employee_id, body.review_id)
+        reviews = _review_history(employee_id)
+        latest_eval = _latest_ai_evaluation(employee_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -158,13 +153,6 @@ def analyse_employee(body: AnalyseRequest):
         "seniority": profile["seniority_level"],
     }
 
-    justification = generate_justification(
-        employee_profile=employee_summary,
-        ai_predicted_score=live["predicted_score"],
-        ai_confidence=live["confidence"],
-        score_signals=signals,
-    )
-
     return {
         "employee": {
             **employee_summary,
@@ -174,6 +162,59 @@ def analyse_employee(body: AnalyseRequest):
         "recorded_score": recorded_score,
         "rating_label": rating_label,
         "rating_color": rating_color,
+        "last_decision": {
+            "decision": latest_eval["manager_decision"],
+            "final_score": round(float(latest_eval["final_score"]), 1),
+            "decided_at": latest_eval["decided_at"].isoformat() if latest_eval["decided_at"] else None,
+        } if latest_eval else None,
+        "all_reviews": reviews,
+    }
+
+
+@router.get("/employees/{employee_id}")
+def get_employee_detail(employee_id: str):
+    """
+    Current recorded performance state for the detail view — no ML model
+    invocation. The frontend calls /analyse separately when the user
+    explicitly asks to run the AI analysis.
+    """
+    base = _employee_detail_base(employee_id)
+    return {
+        **base,
+        "ai_predicted_score": None,
+        "ai_confidence": None,
+        "ai_real_feature_count": None,
+        "ai_total_feature_count": None,
+        "score_signals": None,
+        "justification": None,
+        "policy_citation": None,
+    }
+
+
+class AnalyseRequest(BaseModel):
+    employee_id: str
+    review_id: str | None = None
+
+
+@router.post("/analyse")
+def analyse_employee(body: AnalyseRequest):
+    base = _employee_detail_base(body.employee_id)
+
+    try:
+        live = predict_performance(body.employee_id, body.review_id)
+        signals = get_score_signals(body.employee_id, body.review_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    justification = generate_justification(
+        employee_profile=base["employee"],
+        ai_predicted_score=live["predicted_score"],
+        ai_confidence=live["confidence"],
+        score_signals=signals,
+    )
+
+    return {
+        **base,
         "ai_predicted_score": live["predicted_score"],
         "ai_confidence": live["confidence"],
         "ai_real_feature_count": live["real_feature_count"],
@@ -181,12 +222,6 @@ def analyse_employee(body: AnalyseRequest):
         "score_signals": signals,
         "justification": justification["justification"],
         "policy_citation": justification["policy_citation"],
-        "last_decision": {
-            "decision": latest_eval["manager_decision"],
-            "final_score": round(float(latest_eval["final_score"]), 1),
-            "decided_at": latest_eval["decided_at"].isoformat() if latest_eval["decided_at"] else None,
-        } if latest_eval else None,
-        "all_reviews": reviews,
     }
 
 
