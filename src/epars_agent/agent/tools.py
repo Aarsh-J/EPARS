@@ -5,7 +5,7 @@ All tools are also wrapped as LangChain Tool objects at the bottom of this file,
 Tables used: employees, tasks, task_assignments, workload_history, burnout_indicators, performance_reviews, team_formations
 """
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from db import get_connection
 from calendar_client import create_event, update_event, delete_event
@@ -684,11 +684,15 @@ if __name__ == "__main__":
 
     test_employee = sys.argv[1] if len(sys.argv) > 1 else "EMP001"
     test_task     = sys.argv[2] if len(sys.argv) > 2 else "TASK0001"
+    start_1 = (datetime.now() + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+    end_1   = start_1 + timedelta(hours=2)
 
+    start_2 = start_1 + timedelta(days=2)   # reschedule slot, a couple days after the first
+    end_2   = start_2 + timedelta(hours=2)
     print(f"\n{'='*50}")
     print(f"Testing tools with employee={test_employee}, task={test_task}")
     print('='*50)
-    
+
     print("\n[1] get_employee_profile")
     result = get_employee_profile(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
@@ -697,27 +701,39 @@ if __name__ == "__main__":
     result = get_employee_ml_scores(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
 
-    print("\n[3] get_employee_workload")
+    print("\n[3] compute_live_performance_score")
+    result = compute_live_performance_score(test_employee)
+    print(json.dumps(result, indent=2, default=_serialize))
+
+    print("\n[4] compute_live_burnout_score")
+    result = compute_live_burnout_score(test_employee)
+    print(json.dumps(result, indent=2, default=_serialize))
+
+    print("\n[5] get_employee_workload")
     result = get_employee_workload(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
 
-    print("\n[4] get_task_details")
+    print("\n[6] recommend_employees_for_task")
+    result = recommend_employees_for_task(test_task, top_n=3)
+    print(json.dumps(result, indent=2, default=_serialize))
+
+    print("\n[7] get_task_details")
     result = get_task_details(test_task)
     print(json.dumps(result, indent=2, default=_serialize))
 
-    print("\n[5] find_available_employees")
+    print("\n[8] find_available_employees")
     result = find_available_employees("Python", limit=3)
     print(json.dumps(result, indent=2, default=_serialize))
     
-    print("\n[6] create_calendar_event")
-    result = create_calendar_event(test_task, test_employee, "2026-08-10T10:00:00", "2026-08-10T12:00:00")
+    print("\n[9] create_calendar_event")
+    result = create_calendar_event(test_task, test_employee, start_1.isoformat(), end_1.isoformat())
     print(json.dumps(result, indent=2, default=_serialize))
     
-    print("\n[7] reschedule_calendar_event")
-    result = reschedule_calendar_event(test_task, test_employee, "2026-08-12T10:00:00", "2026-08-12T12:00:00")
+    print("\n[10] reschedule_calendar_event")
+    result = reschedule_calendar_event(test_task, test_employee, start_2.isoformat(), end_2.isoformat())
     print(json.dumps(result, indent=2, default=_serialize))
     
-    print("\n[8] cancel_calendar_event")
+    print("\n[11] cancel_calendar_event")
     result = cancel_calendar_event(test_task, test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
     
