@@ -2,6 +2,11 @@ sampled_dataset/*
 dataset_v1/*
 dataset/*
 
+code/Model1/burnout_predictions.csv
+code/Model1/burnout_predictions.json
+code/Model2_Performance/*.json
+code/Model3_TaskAssignment/artifacts/*.joblib
+code/Model3_TaskAssignment/artifacts/results_*.csv
 
 code/Model4_TeamFormation/FT2/*
 code/Model4_TeamFormation/FT3_v1/*
