@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-09-10T12:34:14",
+    "generated_at": "2026-09-11T14:10:26",
     "total_employees": 1,
     "thresholds": {
       "low_max": 19.48,
@@ -9,25 +9,25 @@
     }
   },
   "summary": {
-    "low": 0,
-    "medium": 1,
+    "low": 1,
+    "medium": 0,
     "high": 0
   },
   "employees": [
     {
-      "employee_id": "EMP001",
-      "name": "Jordan Nair",
-      "department": "Engineering",
-      "role": "Team Lead",
+      "employee_id": "EMP002",
+      "name": "Nikhil Bose",
+      "department": "Marketing",
+      "role": "Content Strategist",
       "seniority_level": "Mid",
-      "burnout_score": 25.54,
-      "risk_category": "Medium",
+      "burnout_score": 18.6,
+      "risk_category": "Low",
       "signals": {
         "late_hours_frequency": 2.0,
-        "vacation_days_unused": 5.0,
-        "job_satisfaction": 7.0,
+        "vacation_days_unused": 3.0,
+        "job_satisfaction": 8.0,
         "role_ambiguity": 0.0,
-        "stress_load": 1.0,
+        "stress_load": 0.6,
         "pressure_index": 2.0
       }
     }
