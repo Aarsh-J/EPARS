@@ -10,3 +10,4 @@ code/Model3_TaskAssignment/artifacts/results_*.csv
 
 code/Model4_TeamFormation/FT2/*
 code/Model4_TeamFormation/FT3_v1/*
+**/__pycache__/**
