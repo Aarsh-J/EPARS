@@ -3,7 +3,13 @@ team_recommender.py
 ────────────────────────────────────────────────────────────────────────────────
 Model 4 — Team Formation via Search + Composite Scoring
 ────────────────────────────────────────────────────────────────────────────────
-NOT a trained supervised regressor. Reason: team_formations.csv's outcome
+Model 4 has two parts: (a) a search + composite-scoring layer, and (b) a
+TRAINED unsupervised component, composition_model.py (Isolation Forest),
+that scores how typical a candidate team's composition is relative to the
+~1000 real historical rosters in team_formations.csv. (b) is folded into
+team_score as `composition_typicality` and surfaced as a flag.
+
+Why it is not a supervised regressor on team outcomes: team_formations.csv's outcome
 columns (actual_performance_score, met_deadline, quality_rating) are
 generated in the dataset generator as pure `np.random.normal(...)` noise,
 independent of team composition (verified against
@@ -84,17 +90,20 @@ MODEL3_DIR = os.path.join(BASE_DIR, "../Model3_TaskAssignment")
 DATASET_DIR = os.path.join(BASE_DIR, "../../dataset")
 
 sys.path.insert(0, MODEL3_DIR)
+sys.path.insert(0, BASE_DIR)
 import scheduler as m3_scheduler  # noqa: E402  (Model3's Layer 3 — reused unmodified)
+import composition_model as m4_comp  # noqa: E402  (trained anomaly detector)
 
 # Full intended weighting — sums to 1.0. Kept here as the reference
 # version even while skill_coverage is switched off below, so re-enabling
 # it later is a one-line change, not a redesign.
 FULL_TEAM_WEIGHTS = {
-    "task_fit": 0.55,          # mean of scheduler.py's per-task composite_score
+    "task_fit": 0.45,          # mean of scheduler.py's per-task composite_score
     "skill_coverage": 0.20,    # project-wide required-skill coverage
     "experience_balance": 0.10,
     "workload_balance": 0.10,
     "past_overlap": 0.05,
+    "composition_typicality": 0.10,  # TRAINED Isolation Forest: 0-100, 100 = typical roster
 }
 
 # By request: build/validate the core model with skill_coverage OUT of
@@ -104,7 +113,7 @@ FULL_TEAM_WEIGHTS = {
 # is False. Flip to True to re-enable (remaining weights auto-renormalize
 # to keep summing to 1.0, so team_score stays on a comparable 0-100 scale
 # either way).
-INCLUDE_SKILL_COVERAGE = False
+INCLUDE_SKILL_COVERAGE = True
 
 
 def _active_team_weights() -> dict:
@@ -126,6 +135,33 @@ EXACT_SEARCH_MAX_COMBINATIONS = 20_000
 # for num_teams results — more restarts = better chance of finding
 # num_teams genuinely distinct good teams, at a roughly linear time cost.
 RESTARTS_PER_REQUESTED_TEAM = 8
+
+
+_comp_model = None
+_typicality_cache = {}
+
+
+def _get_comp_model():
+    global _comp_model
+    if _comp_model is None:
+        _comp_model = m4_comp.CompositionModel.load()
+    return _comp_model
+
+
+def _typicality(member_ids) -> float:
+    key = frozenset(member_ids)
+    if key not in _typicality_cache:
+        _typicality_cache[key] = float(_get_comp_model().typicality(list(key)))
+    return _typicality_cache[key]
+
+
+def _prime_typicality(member_id_lists) -> None:
+    """Batch-score many candidate rosters in one forest call (exact-mode search)."""
+    keys = [frozenset(m) for m in member_id_lists]
+    todo = list({k for k in keys if k not in _typicality_cache})
+    if todo:
+        scores = _get_comp_model().typicality_many([list(k) for k in todo])
+        _typicality_cache.update(zip(todo, (float(x) for x in scores)))
 
 
 _raw_employees = None
@@ -315,6 +351,7 @@ def _team_features(assignment: dict, project_id: str) -> dict:
         "experience_balance": experience_balance,
         "workload_balance": workload_balance,
         "past_overlap": past_overlap,
+        "composition_typicality": _typicality(member_ids),
     }
 
 
@@ -333,6 +370,18 @@ def _local_search(assignment: dict, candidates_per_task: dict, project_id: str,
     for _ in range(max_rounds):
         improved = False
         used_ids = set(c["employee_id"] for c in current.values())
+
+        # Score every roster this round could try in ONE forest call, so the
+        # per-swap evaluations below are cache hits (single-row sklearn calls
+        # cost ~10-25ms each; batching keeps heuristic search near-instant).
+        trial_rosters = []
+        for tid, cands in candidates_per_task.items():
+            for alt in cands:
+                if alt["employee_id"] in used_ids:
+                    continue
+                trial_rosters.append([alt["employee_id"] if t == tid else current[t]["employee_id"]
+                                      for t in current])
+        _prime_typicality(trial_rosters)
 
         for task_id, cands in candidates_per_task.items():
             current_pick = current[task_id]
@@ -374,9 +423,10 @@ def _format_result(project_id: str, search_mode: str, n_tasks: int, assignment: 
     team_score = _team_score(features)
     return {
         "project_id": project_id,
-        "search_mode": search_mode,
+        #"search_mode": search_mode,
         "n_tasks": n_tasks,
         "team_score": round(team_score, 1),
+        "unusual_composition": bool(features["composition_typicality"] < _get_comp_model().anomaly_threshold),
         "score_breakdown": {k: round(v, 1) for k, v in features.items()},
         "assignments": [
             {
@@ -453,10 +503,14 @@ def recommend_teams(project_id: str, top_m: int = 5, num_teams: int = 3) -> list
     if search_mode == "exact":
         task_ids = list(candidates_per_task.keys())
         scored = []
+        valid_combos = []
         for combo in itertools.product(*(candidates_per_task[t] for t in task_ids)):
             eids = [c["employee_id"] for c in combo]
             if len(set(eids)) != len(eids):
                 continue  # reject double-booked combos
+            valid_combos.append(combo)
+        _prime_typicality([[c["employee_id"] for c in combo] for combo in valid_combos])
+        for combo in valid_combos:
             assignment = dict(zip(task_ids, combo))
             score = _team_score(_team_features(assignment, project_id))
             scored.append((score, assignment))
