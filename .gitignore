@@ -1,0 +1,10 @@
+# environment files
+.env
+/venv
+
+# React/Vite
+node_modules/
+dist/
+vite_log.txt
+frontend_run.log
+
