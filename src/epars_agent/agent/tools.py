@@ -22,7 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 from modules.ml.task_assignment_predict import recommend_top_n, score_pair
 from modules.ml.predict import predict_performance, predict_burnout
-from modules.ml.task_assignment_predict import recommend_top_n, score_pair
+from modules.ml.team_formation_predict import recommend_teams, check_composition
 # ── Utility ────────────────────────────────────────────────────────────────────
 
 def _serialize(obj):
@@ -360,6 +360,22 @@ def recommend_employees_for_task(task_id: str, top_n: int = 3) -> list:
 def score_employee_for_task(task_id: str, employee_id: str) -> dict:
     try:
         return score_pair(task_id, employee_id)
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": str(e)}
+
+def recommend_team_for_project(project_id: str, num_teams: int = 3, top_m: int = 5) -> list:
+    try:
+        return recommend_teams(project_id, top_m=top_m, num_teams=num_teams)
+    except ValueError as e:
+        return [{"error": str(e)}]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+def check_team_composition(employee_ids: list) -> dict:
+    try:
+        return check_composition(employee_ids)
     except ValueError as e:
         return {"error": str(e)}
     except Exception as e:

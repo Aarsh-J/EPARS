@@ -30,6 +30,8 @@ from tools import (
     find_available_employees,
     recommend_employees_for_task,
     score_employee_for_task,
+    recommend_team_for_project,
+    check_team_composition,
     assign_task,
     flag_burnout_alert,
     create_calendar_event,
@@ -157,6 +159,42 @@ def tool_score_employee_for_task(task_id: str, employee_id: str) -> str:
     return _j(score_employee_for_task(task_id.strip(), employee_id.strip()))
 
 @tool
+def tool_recommend_team_for_project(project_id: str, num_teams: int = 3) -> str:
+    """
+    Builds the best TEAM for a project: one employee per open task, using the
+    Task Assignment ML model for per-task fit, then a team-level search that also
+    scores experience balance, workload balance, past collaboration and the Team
+    Composition model (how typical the roster is vs how teams are usually staffed).
+    project_id: e.g. PRJ001
+    num_teams: how many alternative teams to return (default 3)
+    Returns ranked teams, each with team_score (0-100), score_breakdown,
+    assignments (task_id -> employee_id) and unusual_composition.
+    unusual_composition=true is ADVISORY (the roster looks unlike past teams,
+    e.g. many departments mixed) — it is NOT a policy violation; explain it and
+    let the manager decide. When true, composition_notes says which traits are unusual.
+    Use this for requests like "form a team for PRJ001" / "who should staff project X".
+    This does NOT write anything to the database.
+    """
+    return json.dumps(
+        recommend_team_for_project(project_id.strip(), num_teams=int(num_teams)),
+        default=_serialize,
+    )
+
+@tool
+def tool_check_team_composition(employee_ids: str) -> str:
+    """
+    Checks how typical a specific group of people is as a team, compared with how
+    teams have historically been staffed (Isolation Forest, 0-100, higher = more
+    typical). Advisory only — NOT a policy check.
+    employee_ids: comma-separated, e.g. 'EMP001,EMP014,EMP220' (at least 2)
+    Returns composition_typicality, unusual_composition and, if unusual,
+    composition_notes explaining which traits stand out.
+    Use this to vet a roster a manager already has in mind.
+    """
+    ids = [e.strip() for e in employee_ids.split(",") if e.strip()]
+    return _j(check_team_composition(ids))
+
+@tool
 def tool_assign_task(task_id: str, employee_id: str, skill_match_score: float = 0.0) -> str:
     """
     Assigns a task to an employee and writes it to the database.
@@ -254,6 +292,8 @@ TOOLS = [
     tool_find_available_employees,
     tool_recommend_employees_for_task,
     tool_score_employee_for_task,
+    tool_recommend_team_for_project,
+    tool_check_team_composition,
     tool_assign_task,
     tool_flag_burnout_alert,
     tool_create_calendar_event,
@@ -298,10 +338,24 @@ FOR WORKLOAD CHECK:
 4. Summarise capacity, risk level, and any recommendations
 
 FOR TEAM FORMATION:
-1. Call tool_find_available_employees for each required skill area
-2. Call tool_get_employee_ml_scores and tool_get_employee_workload for top candidates
-3. Call tool_retrieve_hr_policy with 'team formation rules'
-4. Propose the team with roles, justify each member
+1. If the user names a project, call tool_recommend_team_for_project — it ranks
+    whole teams (one employee per open task) with the Task Assignment model plus
+    team-level scoring and the Team Composition model. Prefer it over assembling
+    a team by hand with tool_find_available_employees.
+2. For the top team's members, call tool_get_employee_ml_scores and
+    tool_get_employee_workload to sanity-check burnout and capacity.
+3. Call tool_retrieve_hr_policy with 'team formation rules' and check the team
+    against it (size limits, exactly one Team Lead, skill coverage, burnout caps).
+    The tool does NOT choose a Team Lead or enforce team size — you must flag any
+    policy gap yourself.
+4. If the user gives a specific roster, use tool_check_team_composition on it.
+5. unusual_composition is ADVISORY. Explain it using composition_notes (e.g.
+    "members come from many different departments") — do not treat it as
+    ineligibility. Policy section 6 recommends cross-functional teams for
+    projects that need diverse skills, so a mixed-department team may be intended.
+6. Propose the team with each member's task, justify each member, and state the
+    team_score, the main score_breakdown components, and any policy concerns.
+    Do not assign tasks unless the user explicitly asks you to.
 
 ALWAYS:
 - Default to tool_get_employee_ml_scores for score lookups — it's fast.

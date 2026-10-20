@@ -46,6 +46,10 @@ def get_task_assignment_encoders():
     """Returns {column_name: fitted LabelEncoder} for task_assignment's categorical inputs."""
     return joblib.load(MODELS_DIR / "task_assignment_label_encoders.joblib")
 
+@lru_cache(maxsize=1)
+def get_team_composition_model():
+    """Model4 composition-anomaly bundle (plain dict)."""
+    return joblib.load(MODELS_DIR / "team_composition_bundle.pkl")
 
 def preload_models():
     """
@@ -58,6 +62,7 @@ def preload_models():
         ("burnout", get_burnout_model),
         ("task_assignment_model", get_task_assignment_model),
         ("task_assignment_encoders", get_task_assignment_encoders),
+        ("team_composition", get_team_composition_model),
     )
     for name, loader in loaders:
         try:
