@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getEmployees, analyseEmployee, finalizePerformanceScore } from "../api/client.js";
+import { getEmployees, getEmployeeDetail, analyseEmployee, finalizePerformanceScore } from "../api/client.js";
 import { useEmployeeTableControls } from "../hooks/useEmployeeTableControls.js";
 
 const SIGNAL_META = [
@@ -45,6 +45,8 @@ export default function Performance() {
 
   const [selectedId, setSelectedId] = useState(null);
   const [result, setResult] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
   const [analysing, setAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState(null);
 
@@ -74,34 +76,75 @@ export default function Performance() {
       .catch((err) => setLoadError(err.message));
   }, []);
 
-  function handleAnalyse(employeeId, reviewId = null) {
+  function openDetail(employeeId) {
     setSelectedId(employeeId);
-    setAnalysing(true);
+    setDetailLoading(true);
+    setDetailError(null);
     setAnalyseError(null);
     setResult(null);
+    getEmployeeDetail(employeeId)
+      .then(setResult)
+      .catch((err) => setDetailError(err.message))
+      .finally(() => setDetailLoading(false));
+  }
+
+  function handleRunAnalysis(employeeId, reviewId = null) {
+    setAnalysing(true);
+    setAnalyseError(null);
     analyseEmployee(employeeId, reviewId)
       .then(setResult)
       .catch((err) => setAnalyseError(err.message))
       .finally(() => setAnalysing(false));
   }
 
+  // "Analyse" button — runs the model immediately instead of opening the
+  // no-model detail view first (that's what the row click does).
+  function handleAnalyseNow(employeeId) {
+    setSelectedId(employeeId);
+    setDetailLoading(false);
+    setDetailError(null);
+    setResult(null);
+    handleRunAnalysis(employeeId);
+  }
+
   function resetView() {
     setSelectedId(null);
     setResult(null);
+    setDetailError(null);
     setAnalyseError(null);
+  }
+
+  function patchEmployeeScore(employeeId, score) {
+    setEmployees((prev) => prev.map((e) => (e.employee_id === employeeId ? { ...e, score } : e)));
   }
 
   if (selectedId) {
     return (
       <div id="results-panel">
-        {analysing && (
+        {detailLoading && (
+          <div className="loading-wrap">
+            <div className="spinner" />
+            <p>Loading employee details…</p>
+          </div>
+        )}
+
+        {analysing && !result && (
           <div className="loading-wrap">
             <div className="spinner" />
             <p>Running analysis…</p>
           </div>
         )}
 
-        {!analysing && analyseError && (
+        {!detailLoading && detailError && (
+          <div className="card">
+            <p>{detailError}</p>
+            <button className="btn-secondary" onClick={resetView} style={{ marginTop: "1rem" }}>
+              ← Back to employee list
+            </button>
+          </div>
+        )}
+
+        {!analysing && analyseError && !result && (
           <div className="card">
             <p>{analyseError}</p>
             <button className="btn-secondary" onClick={resetView} style={{ marginTop: "1rem" }}>
@@ -110,7 +153,17 @@ export default function Performance() {
           </div>
         )}
 
-        {!analysing && result && <ResultContent data={result} onSelectReview={handleAnalyse} onBack={resetView} />}
+        {!detailLoading && result && (
+          <ResultContent
+            data={result}
+            onSelectReview={handleRunAnalysis}
+            onRunAnalysis={handleRunAnalysis}
+            analysing={analysing}
+            analyseError={analyseError}
+            onBack={resetView}
+            onFinalized={patchEmployeeScore}
+          />
+        )}
       </div>
     );
   }
@@ -198,7 +251,7 @@ export default function Performance() {
           </thead>
           <tbody>
             {filtered.map((emp) => (
-              <tr className="emp-row" key={emp.employee_id} onClick={() => handleAnalyse(emp.employee_id)} style={{ cursor: "pointer" }}>
+              <tr className="emp-row" key={emp.employee_id} onClick={() => openDetail(emp.employee_id)} style={{ cursor: "pointer" }}>
                 <td className="checkbox-col" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
@@ -218,7 +271,13 @@ export default function Performance() {
                   <span className={`score-pill ${scoreClass(emp.score)}`}>{emp.score}</span>
                 </td>
                 <td>
-                  <button className="btn-analyse" onClick={() => handleAnalyse(emp.employee_id)}>
+                  <button
+                    className="btn-analyse"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAnalyseNow(emp.employee_id);
+                    }}
+                  >
                     Analyse
                   </button>
                 </td>
@@ -231,7 +290,7 @@ export default function Performance() {
   );
 }
 
-function ResultContent({ data, onSelectReview, onBack }) {
+function ResultContent({ data, onSelectReview, onRunAnalysis, analysing, analyseError, onBack, onFinalized }) {
   const emp = data.employee;
   const initials = emp.employee_id.slice(-3);
   const latestReviewId = data.all_reviews?.[0]?.review_id || null;
@@ -273,6 +332,7 @@ function ResultContent({ data, onSelectReview, onBack }) {
           decided_at: saved.decided_at,
         });
         setEditing(false);
+        onFinalized?.(emp.employee_id, Number(saved.final_score));
       })
       .catch((err) => setSubmitError(err.message))
       .finally(() => setSubmitting(false));
@@ -337,9 +397,18 @@ function ResultContent({ data, onSelectReview, onBack }) {
 
       <div className="card" id="justification-card">
         <h3 className="card-title">AI Justification</h3>
-        <p>{data.justification}</p>
-        {data.policy_citation && (
-          <p className="live-score-note">Policy reference: {data.policy_citation}</p>
+        {hasAiEstimate ? (
+          <>
+            <p>{data.justification}</p>
+            {data.policy_citation && (
+              <p className="live-score-note">Policy reference: {data.policy_citation}</p>
+            )}
+          </>
+        ) : (
+          <p className="live-score-note">
+            No AI analysis has been run yet for this review. Run the ML model to get an AI-estimated
+            score, confidence, and justification.
+          </p>
         )}
 
         {sessionDecision ? (
@@ -352,6 +421,17 @@ function ResultContent({ data, onSelectReview, onBack }) {
             . Old recorded score was {data.recorded_score ?? "—"}; {sessionDecision.final_score} is now the
             employee's current recorded score.
           </p>
+        ) : !hasAiEstimate ? (
+          <div style={{ marginTop: "1rem" }}>
+            {analyseError && <p style={{ color: "#991b1b" }}>{analyseError}</p>}
+            <button
+              className="btn-analyse"
+              disabled={analysing}
+              onClick={() => onRunAnalysis(emp.employee_id, latestReviewId)}
+            >
+              {analysing ? "Running…" : "Run ML Model Analysis"}
+            </button>
+          </div>
         ) : editing ? (
           <div style={{ marginTop: "1rem" }}>
             <label>
@@ -402,7 +482,14 @@ function ResultContent({ data, onSelectReview, onBack }) {
             >
               Accept Score
             </button>{" "}
-            <button className="btn-secondary" disabled={submitting} onClick={() => setEditing(true)}>
+            <button
+              className="btn-secondary"
+              disabled={submitting}
+              onClick={() => {
+                setEditValue(data.ai_predicted_score ?? "");
+                setEditing(true);
+              }}
+            >
               Edit Score
             </button>
           </div>
