@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { getOpenTasks, recommendForTask, scoreTaskAssignment } from "../api/client.js";
 
 function scoreClass(score) {
@@ -197,7 +198,12 @@ export default function TaskAssignment() {
   return (
     <div className="card" id="selector-card">
       <div className="card-header">
-        <h2>Select Task</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <h2>Select Task</h2>
+          <Link to="/kanban" className="btn-jira-primary btn-sm" style={{ textDecoration: "none" }}>
+            View in Kanban Board →
+          </Link>
+        </div>
         <input
           type="text"
           id="task-search"

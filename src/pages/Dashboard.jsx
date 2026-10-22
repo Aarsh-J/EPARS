@@ -12,6 +12,16 @@ const MODULES = [
     path: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   },
   {
+    title: "Kanban Board",
+    description:
+      "Track task progression across To Do, In Progress, In Review, and Done with Jira-like drag-and-drop.",
+    to: "/kanban",
+    active: true,
+    iconBg: "#e0e7ff",
+    iconStroke: "#4338ca",
+    path: "M3 4a1 1 0 011-1h3a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm6 0a1 1 0 011-1h3a1 1 0 011 1v8a1 1 0 01-1 1H10a1 1 0 01-1-1V4zm6 0a1 1 0 011-1h3a1 1 0 011 1v11a1 1 0 01-1 1h-3a1 1 0 01-1-1V4z",
+  },
+  {
     title: "Task Assignment",
     description:
       "Optimise employee-task matching using skill alignment, availability, and workload compatibility.",

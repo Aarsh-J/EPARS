@@ -94,3 +94,11 @@ export function scoreTaskAssignment(taskId, employeeId) {
 export function recommendForTask(taskId, topN = 5) {
   return request(`/api/task_assignment/recommend/${encodeURIComponent(taskId)}?top_n=${topN}`);
 }
+
+export function updateTaskStatus(taskId, status) {
+  return request(`/api/task_assignment/tasks/${encodeURIComponent(taskId)}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
+

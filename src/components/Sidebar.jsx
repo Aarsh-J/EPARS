@@ -35,6 +35,17 @@ const NAV_ITEMS = [
     ),
   },
   {
+    to: "/kanban",
+    label: "Kanban Board",
+    icon: (
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h3a1 1 0 001-1V4a1 1 0 00-1-1H3zm5 0a1 1 0 00-1 1v8a1 1 0 001 1h3a1 1 0 001-1V4a1 1 0 00-1-1H8zm5 0a1 1 0 00-1 1v11a1 1 0 001 1h3a1 1 0 001-1V4a1 1 0 00-1-1h-3z"
+      />
+    ),
+  },
+  {
     to: "/task-assignment",
     label: "Task Assignment",
     icon: (
