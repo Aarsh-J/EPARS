@@ -49,3 +49,42 @@ def recommend(task_id: str, top_n: int = 3):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+KANBAN_STATUS_TO_DB = {
+    "todo": "Not Started",
+    "in_progress": "In Progress",
+    "in_review": "In Review",
+    "done": "Completed",
+    "Not Started": "Not Started",
+    "In Progress": "In Progress",
+    "In Review": "In Review",
+    "Completed": "Completed",
+    "Blocked": "Blocked",
+}
+
+
+@router.post("/tasks/{task_id}/status")
+def update_task_status(task_id: str, payload: dict):
+    """Update task status in PostgreSQL database using canonical schema values."""
+    raw_status = payload.get("status")
+    if not raw_status:
+        raise HTTPException(status_code=400, detail="Missing 'status' in request body")
+
+    # Map frontend column IDs to the database table's canonical status values
+    db_status = KANBAN_STATUS_TO_DB.get(raw_status, raw_status)
+
+    try:
+        from db import get_connection
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE tasks SET status = %s, last_updated = NOW() WHERE task_id = %s",
+                    (db_status, task_id),
+                )
+                conn.commit()
+        return {"status": "success", "task_id": task_id, "new_status": db_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
