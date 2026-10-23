@@ -244,16 +244,27 @@ def _get_active_tasks_for_employee(employee_id: str) -> list:
             return _to_list(cur.fetchall())
 
 
-def _next_id(table: str, id_col: str, prefix: str) -> str:
+def _next_id_in_cursor(cur, table: str, id_col: str, prefix: str) -> str:
+    """
+    Generate the next sequential ID **within an already-open cursor** so that
+    the MAX query and the subsequent INSERT share the same connection/transaction,
+    eliminating the race window that caused duplicate-key errors when two
+    analyse requests arrived close together.
+    """
     sql = f"""
         SELECT COALESCE(MAX(CAST(SUBSTRING({id_col} FROM {len(prefix) + 1}) AS INTEGER)), 0) AS max_num
         FROM {table}
     """
+    cur.execute(sql)
+    next_num = cur.fetchone()["max_num"] + 1
+    return f"{prefix}{next_num:04d}"
+
+
+def _next_id(table: str, id_col: str, prefix: str) -> str:
+    """Standalone helper kept for callers that don't have an open cursor."""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql)
-            next_num = cur.fetchone()["max_num"] + 1
-    return f"{prefix}{next_num:04d}"
+            return _next_id_in_cursor(cur, table, id_col, prefix)
 
 
 # ── Phase 1: assess + recommend (read-only, no side effects) ────────────────
@@ -273,22 +284,33 @@ def assess_and_recommend(employee_id: str) -> dict:
     else:
         status = "informational"
 
-    assessment_id = _next_id("burnout_ai_assessments", "assessment_id", "BOAI")
+    # Generate the ID and INSERT in the same connection so there is no window
+    # for a concurrent request to read the same MAX and produce a duplicate key.
     now = datetime.now()
     insert_sql = """
         INSERT INTO burnout_ai_assessments (
             assessment_id, employee_id, ai_predicted_class, ai_probabilities,
             confidence, justification, status, reviewed_at, created_at
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (assessment_id) DO NOTHING
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(insert_sql, (
-                assessment_id, employee_id, predicted_class,
-                json.dumps(prediction["predicted_probabilities"]),
-                confidence, justification["justification"], status, None, now,
-            ))
-        conn.commit()
+    assessment_id = None
+    for _attempt in range(5):
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                candidate_id = _next_id_in_cursor(cur, "burnout_ai_assessments", "assessment_id", "BOAI")
+                cur.execute(insert_sql, (
+                    candidate_id, employee_id, predicted_class,
+                    json.dumps(prediction["predicted_probabilities"]),
+                    confidence, justification["justification"], status, None, now,
+                ))
+                inserted = cur.rowcount
+            conn.commit()
+        if inserted:
+            assessment_id = candidate_id
+            break
+    if assessment_id is None:
+        raise RuntimeError("Failed to insert burnout assessment after 5 attempts (duplicate key).")
 
     # High-confidence + over threshold is trusted enough to act on immediately
     # (mirrors flag_burnout_alert's own behavior in burnout_monitor.py, which
@@ -343,16 +365,24 @@ def _generate_recommendations(assessment_id: str, employee_id: str, profile: dic
         decision = decide_action_for_task(profile, task, candidates)
         action = decision.get("action", "none")
 
-        recommendation_id = _next_id("task_reassignment_recommendations", "recommendation_id", "TRR")
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(insert_sql, (
-                    recommendation_id, assessment_id, employee_id, task["task_id"], action,
-                    decision.get("new_employee_id"), decision.get("new_start_time"),
-                    decision.get("new_end_time"), decision.get("reasoning"),
-                    None, None, now,
-                ))
-            conn.commit()
+        # Same pattern: generate ID and INSERT in one connection to avoid duplicates.
+        inserted_rec = False
+        for _attempt in range(5):
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    recommendation_id = _next_id_in_cursor(
+                        cur, "task_reassignment_recommendations", "recommendation_id", "TRR"
+                    )
+                    cur.execute(insert_sql, (
+                        recommendation_id, assessment_id, employee_id, task["task_id"], action,
+                        decision.get("new_employee_id"), decision.get("new_start_time"),
+                        decision.get("new_end_time"), decision.get("reasoning"),
+                        None, None, now,
+                    ))
+                    inserted_rec = cur.rowcount > 0
+                conn.commit()
+            if inserted_rec:
+                break
 
         recommendations.append({
             "recommendation_id": recommendation_id,
