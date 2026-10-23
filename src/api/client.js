@@ -102,3 +102,21 @@ export function updateTaskStatus(taskId, status) {
   });
 }
 
+export function getProjectsWithOpenTasks(limit = 200) {
+  return request(`/api/team_formation/projects?limit=${limit}`);
+}
+
+export function recommendTeams(projectId, numTeams = 3, topM = 5, taskIds = null) {
+  let url = `/api/team_formation/recommend/${encodeURIComponent(projectId)}?num_teams=${numTeams}&top_m=${topM}`;
+  if (taskIds && taskIds.length > 0) {
+    url += `&task_ids=${encodeURIComponent(taskIds.join(","))}`;
+  }
+  return request(url);
+}
+
+export function checkTeamComposition(employeeIds) {
+  const idsStr = Array.isArray(employeeIds) ? employeeIds.join(",") : employeeIds;
+  return request(`/api/team_formation/composition?employee_ids=${encodeURIComponent(idsStr)}`);
+}
+
+
