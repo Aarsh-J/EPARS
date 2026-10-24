@@ -7,6 +7,7 @@ import {
   decideReassignment,
 } from "../api/client.js";
 import { useEmployeeTableControls } from "../hooks/useEmployeeTableControls.js";
+import BurnoutPanel from "../components/BurnoutPanel";   // adjust path
 
 function categoryClass(category) {
   const c = (category || "").toLowerCase();
@@ -30,6 +31,8 @@ export default function Burnout() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkResults, setBulkResults] = useState(null);
   const [bulkProgress, setBulkProgress] = useState(0);
+
+  const [showBurnout, setShowBurnout] = useState(false);
 
   const {
     search,
@@ -222,14 +225,19 @@ export default function Burnout() {
     <div className="card" id="selector-card">
       <div className="card-header">
         <h2>Select Employee</h2>
-        <input
-          type="text"
-          id="emp-search"
-          placeholder="Search by ID, department or role…"
-          className="search-input"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <button className="bp-trigger" onClick={() => setShowBurnout(true)}>
+            Check employee burnout
+          </button>
+          <input
+            type="text"
+            id="emp-search"
+            placeholder="Search by ID, department or role…"
+            className="search-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
       {loadError && <p style={{ color: "#991b1b" }}>{loadError}</p>}
@@ -339,6 +347,12 @@ export default function Burnout() {
           </tbody>
         </table>
       </div>
+      {showBurnout && (
+        <BurnoutPanel
+          onClose={() => setShowBurnout(false)}
+          onDone={() => getBurnoutEmployees().then(setEmployees).catch(() => {})}
+        />
+      )}
     </div>
   );
 }
