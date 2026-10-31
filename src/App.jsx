@@ -6,6 +6,7 @@ import Burnout from "./pages/Burnout.jsx";
 import TaskAssignment from "./pages/TaskAssignment.jsx";
 import KanbanBoard from "./pages/KanbanBoard.jsx";
 import TeamFormation from "./pages/TeamFormation.jsx";
+import Forms from "./pages/Forms.jsx";
 
 const PAGE_TITLES = {
   "/": "Dashboard",
@@ -14,6 +15,7 @@ const PAGE_TITLES = {
   "/task-assignment": "Task Assignment",
   "/kanban": "Kanban Board",
   "/team-formation": "Team Formation",
+  "/forms": "Forms",
 };
 
 export default function App() {
@@ -29,6 +31,7 @@ export default function App() {
         <Route path="/task-assignment" element={<TaskAssignment />} />
         <Route path="/kanban" element={<KanbanBoard />} />
         <Route path="/team-formation" element={<TeamFormation />} />
+        <Route path="/forms" element={<Forms />} />
       </Routes>
     </Layout>
   );

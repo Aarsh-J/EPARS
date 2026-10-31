@@ -1,0 +1,57 @@
+.forms-group {
+  margin-bottom: 2rem;
+}
+
+.forms-group-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.forms-group-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 1rem;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.form-card {
+  justify-content: space-between;
+}
+
+.form-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.form-code {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.form-who {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.form-open-btn {
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+  align-self: flex-start;
+  padding: 7px 14px;
+}
+
+.form-unavailable {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+}
