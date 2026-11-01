@@ -61,6 +61,55 @@ export const FORM_GROUPS = [
       },
     ],
   },
+
+    {
+    id: "people-wellbeing",
+    title: "People & Wellbeing",
+    description:
+      "Describe who employees are, how much time they have, and how they are coping. These feed the burnout model and the employee records.",
+    forms: [
+      {
+        code: "F1",
+        title: "Employee Profile & Skills",
+        who: "HR / Employee",
+        description:
+          "Create or update an employee record: role, department, seniority, skills, capacity and work preferences.",
+        url: "https://docs.google.com/forms/d/e/1FAIpQLScaMZ0LavxDqeGbG7nlA9iQz1Nz2c8PVLBlvGT_Cw-AV26tiw/viewform",
+      },
+      {
+        code: "F2",
+        title: "Availability & Leave",
+        who: "Employee",
+        description:
+          "Record leave or out-of-office periods and whether you can take on new work.",
+        url: "https://docs.google.com/forms/d/e/1FAIpQLSfvZfgBJI5I3bCT_DqhfkNBWQtgtl9riC7mqmtzXFGyJKowWQ/viewform",
+      },
+      {
+        code: "F9",
+        title: "Daily Timesheet & Work Context",
+        who: "Employee",
+        description:
+          "Log your hours, overtime, where you worked and how the day felt. One entry per day.",
+        url: "https://docs.google.com/forms/d/e/1FAIpQLSfnH3jUEsxSMoy-t1oyfvhSqoH6MzrdJAx38jvKbgttEP2Hsw/viewform",
+      },
+      {
+        code: "F10",
+        title: "Wellbeing Check-in",
+        who: "Employee",
+        description:
+          "A short, confidential check-in on stress, energy and support, with an optional full monthly survey.",
+        url: "https://docs.google.com/forms/d/e/1FAIpQLScxkX-KFsl1cnXiRMEWTUmJDcILAA-oxA7N4-Ciw3mYDSRU_w/viewform",
+      },
+      {
+        code: "F11",
+        title: "Burnout Intervention Log",
+        who: "Manager / HR",
+        description:
+          "Record the support given to an employee at risk of burnout, and later whether it helped.",
+        url: "https://docs.google.com/forms/d/e/1FAIpQLSeveCvi3urooXjw4VH7vE6igAFh5fBWWH7WODFG726CIo3VEQ/viewform",
+      },
+    ],
+  },
   // Teammates: add the People & Wellbeing group (F1, F2, F9, F10, F11) and the
   // Planning & Scheduling group (F3, F4, F7, F14, F15) here in the same shape.
 ];
