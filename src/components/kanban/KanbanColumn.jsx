@@ -17,6 +17,7 @@ export default function KanbanColumn({
   onOpenDetail,
   onMoveColumn,
   onQuickAddTask,
+  columns,
   density = "normal",
 }) {
   const isOverWip = column.wipLimit && tasks.length > column.wipLimit;
@@ -93,6 +94,7 @@ export default function KanbanColumn({
               onDropOnCard={onDropOnCard}
               onOpenDetail={onOpenDetail}
               onMoveColumn={onMoveColumn}
+              columns={columns}
               density={density}
             />
           ))

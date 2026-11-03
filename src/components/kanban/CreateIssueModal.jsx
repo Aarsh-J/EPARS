@@ -1,27 +1,46 @@
 import { useState, useEffect } from "react";
-import { IssueTypeIcon, PriorityIcon } from "./KanbanIcons.jsx";
-import { ISSUE_TYPES, PRIORITIES, TEAM_MEMBERS, DEFAULT_COLUMNS } from "../../data/kanbanData.js";
+import { PriorityIcon } from "./KanbanIcons.jsx";
+import SearchableDropdown from "./SearchableDropdown.jsx";
 
 export default function CreateIssueModal({
   isOpen,
   onClose,
   onCreate,
-  initialStatus = "todo",
+  initialStatus = "Not Started",
+  employees = [],
+  statusOptions = [],
+  priorityOptions = [],
+  projectLabel = "",
+  projects = [],
+  selectedProjectIds = [],
+  includeOtherTasks = false,
 }) {
+  const NO_PROJECT = "__other_tasks__";
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [type, setType] = useState("task");
   const [status, setStatus] = useState(initialStatus);
-  const [priority, setPriority] = useState("medium");
+  const [priority, setPriority] = useState("Medium");
   const [assigneeId, setAssigneeId] = useState("");
   const [storyPoints, setStoryPoints] = useState(3);
   const [dueDate, setDueDate] = useState("");
-  const [tagsInput, setTagsInput] = useState("");
+  const [requiredSkills, setRequiredSkills] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     setStatus(initialStatus);
   }, [initialStatus]);
+
+  useEffect(() => {
+    if (selectedProjectIds.length === 1) {
+      setProjectId(selectedProjectIds[0]);
+    } else if (selectedProjectIds.length === 0 && includeOtherTasks) {
+      setProjectId(NO_PROJECT);
+    } else {
+      setProjectId("");
+    }
+  }, [isOpen, selectedProjectIds, includeOtherTasks]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -33,50 +52,62 @@ export default function CreateIssueModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
       setError("Please enter a summary / title for the issue.");
       return;
     }
-
-    const tags = tagsInput
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
+    if (!selectedProjectIds.length && !includeOtherTasks) {
+      setError("Select a project or enable Other tasks before creating a task.");
+      return;
+    }
+    if (!projectId) {
+      setError("Choose a project for this task.");
+      return;
+    }
 
     const newTask = {
-      title: title.trim(),
-      description: description.trim(),
-      type,
+      task_name: title.trim(),
+      task_description: description.trim() || null,
+      project_id: projectId === NO_PROJECT ? null : projectId,
       status: status || initialStatus,
       priority,
-      assigneeId: assigneeId || null,
-      storyPoints: storyPoints !== "" ? Number(storyPoints) : null,
-      dueDate: dueDate || null,
-      tags,
+      assigned_to: assigneeId || null,
+      story_points: storyPoints !== "" ? Number(storyPoints) : null,
+      due_date: dueDate || null,
+      required_skills: requiredSkills.trim() || null,
     };
 
-    onCreate(newTask);
-    handleClose();
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      await onCreate(newTask);
+      handleClose(true);
+    } catch (submitError) {
+      setError(submitError.message || "Unable to create task.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleClose = () => {
+  const handleClose = (force = false) => {
+    if (isSubmitting && !force) return;
     setTitle("");
     setDescription("");
-    setType("task");
     setStatus(initialStatus);
-    setPriority("medium");
+    setPriority("Medium");
     setAssigneeId("");
     setStoryPoints(3);
     setDueDate("");
-    setTagsInput("");
+    setRequiredSkills("");
+    setProjectId("");
     setError(null);
     onClose();
   };
 
   return (
-    <div className="jira-modal-backdrop" onClick={handleClose}>
+    <div className="jira-modal-backdrop" onClick={() => handleClose()}>
       <div
         className="jira-modal-dialog"
         onClick={(e) => e.stopPropagation()}
@@ -87,13 +118,13 @@ export default function CreateIssueModal({
         {/* Modal Header */}
         <div className="jira-modal-header">
           <div className="jira-modal-title-group">
-            <span className="jira-badge-pill">Project: EPARS Core</span>
+            <span className="jira-badge-pill">{projectLabel || "Select a project"}</span>
             <h2 id="create-issue-title">Create Issue</h2>
           </div>
           <button
             type="button"
             className="jira-modal-close"
-            onClick={handleClose}
+            onClick={() => handleClose()}
             aria-label="Close dialog"
           >
             ✕
@@ -104,41 +135,47 @@ export default function CreateIssueModal({
         <form onSubmit={handleSubmit} className="jira-modal-body">
           {error && <div className="jira-form-error">{error}</div>}
 
-          {/* Row 1: Type & Status */}
           <div className="jira-form-grid-2">
             <div className="jira-form-group">
-              <label htmlFor="issue-type-select">Issue Type *</label>
-              <div className="jira-select-icon-wrap">
-                <IssueTypeIcon type={type} size={16} />
-                <select
-                  id="issue-type-select"
-                  className="jira-input jira-select-icon"
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
-                >
-                  {Object.values(ISSUE_TYPES).map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <label htmlFor="issue-project-select">Project</label>
+              <SearchableDropdown
+                id="issue-project-select"
+                className="kanban-form-dropdown"
+                triggerClassName="jira-input"
+                options={[
+                  ...projects
+                    .filter((project) => selectedProjectIds.includes(project.project_id))
+                    .map((project) => ({
+                      value: project.project_id,
+                      label: project.project_name || project.project_id,
+                    })),
+                  ...(includeOtherTasks ? [{ value: NO_PROJECT, label: "Other tasks (no project)" }] : []),
+                ]}
+                value={projectId}
+                onChange={(value) => {
+                  setProjectId(value);
+                  if (error) setError(null);
+                }}
+                placeholder="Select a project"
+                ariaLabel="Choose a project for this task"
+              />
             </div>
+          </div>
 
+          {/* Status */}
+          <div className="jira-form-grid-2">
             <div className="jira-form-group">
               <label htmlFor="issue-status-select">Status / Column</label>
-              <select
+              <SearchableDropdown
                 id="issue-status-select"
-                className="jira-input"
+                className="kanban-form-dropdown"
+                triggerClassName="jira-input"
+                options={statusOptions.map((option) => ({ value: option, label: option }))}
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                {DEFAULT_COLUMNS.map((col) => (
-                  <option key={col.id} value={col.id}>
-                    {col.title}
-                  </option>
-                ))}
-              </select>
+                onChange={setStatus}
+                placeholder="Select status"
+                ariaLabel="Choose task status"
+              />
             </div>
           </div>
 
@@ -180,18 +217,16 @@ export default function CreateIssueModal({
               <label htmlFor="issue-priority-select">Priority</label>
               <div className="jira-select-icon-wrap">
                 <PriorityIcon priority={priority} size={15} />
-                <select
+                <SearchableDropdown
                   id="issue-priority-select"
-                  className="jira-input jira-select-icon"
+                  className="kanban-form-dropdown"
+                  triggerClassName="jira-input jira-select-icon"
+                  options={priorityOptions.map((option) => ({ value: option, label: option }))}
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                >
-                  {Object.values(PRIORITIES).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setPriority}
+                  placeholder="Select priority"
+                  ariaLabel="Choose task priority"
+                />
               </div>
             </div>
 
@@ -213,19 +248,22 @@ export default function CreateIssueModal({
           <div className="jira-form-grid-2">
             <div className="jira-form-group">
               <label htmlFor="issue-assignee-select">Assignee</label>
-              <select
+              <SearchableDropdown
                 id="issue-assignee-select"
-                className="jira-input"
+                className="kanban-form-dropdown"
+                triggerClassName="jira-input"
+                options={[
+                  { value: "", label: "Unassigned" },
+                  ...employees.map((employee) => ({
+                    value: employee.employee_id,
+                    label: `${employee.full_name}${employee.role ? ` (${employee.role})` : ""}`,
+                  })),
+                ]}
                 value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-              >
-                <option value="">Unassigned</option>
-                {TEAM_MEMBERS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.role})
-                  </option>
-                ))}
-              </select>
+                onChange={setAssigneeId}
+                placeholder="Unassigned"
+                ariaLabel="Choose task assignee"
+              />
             </div>
 
             <div className="jira-form-group">
@@ -240,28 +278,28 @@ export default function CreateIssueModal({
             </div>
           </div>
 
-          {/* Row 6: Tags / Skills */}
+          {/* Required skills are stored in the tasks table. */}
           <div className="jira-form-group">
-            <label htmlFor="issue-tags-input">
-              Tags / Required Skills <span className="label-hint">(comma separated)</span>
+            <label htmlFor="issue-required-skills-input">
+              Required Skills <span className="label-hint">(comma separated)</span>
             </label>
             <input
-              id="issue-tags-input"
+              id="issue-required-skills-input"
               type="text"
               className="jira-input"
               placeholder="e.g. React, Python, PostgreSQL, UI"
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
+              value={requiredSkills}
+              onChange={(e) => setRequiredSkills(e.target.value)}
             />
           </div>
 
           {/* Modal Footer */}
           <div className="jira-modal-footer">
-            <button type="button" className="btn-jira-ghost" onClick={handleClose}>
+            <button type="button" className="btn-jira-ghost" onClick={() => handleClose()} disabled={isSubmitting}>
               Cancel
             </button>
-            <button type="submit" className="btn-jira-primary">
-              Create Issue
+            <button type="submit" className="btn-jira-primary" disabled={isSubmitting}>
+              {isSubmitting ? "Creating…" : "Create Issue"}
             </button>
           </div>
         </form>
