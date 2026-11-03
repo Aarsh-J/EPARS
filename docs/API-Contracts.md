@@ -215,6 +215,58 @@ call across the whole candidate pool instead of one predict() per employee.
 
 **Response** `200`: array of the same shape as `/score`'s response, sorted by `composite_score` descending.
 
+## Kanban task persistence
+
+The board continues to use `GET /api/task_assignment/board`,
+`GET /api/task_assignment/board_projects`, and
+`GET /api/task_assignment/board_employees` for its existing filters and data.
+
+### `POST /api/task_assignment/tasks`
+
+Creates a task in PostgreSQL. `task_name` is required. Supported optional fields are
+`task_description`, `project_id`, `priority`, `status`, `assigned_to`, `story_points`,
+`due_date`, and `required_skills`. Project and employee IDs are checked against their
+tables. IDs use the existing `TSK<number>` format and retry on primary-key collisions.
+
+**Response** `201`: `{ "task": { ...board task fields... } }`.
+
+### `PUT /api/task_assignment/tasks/{task_id}`
+
+Partially updates only the supported fields listed above, except that status changes use
+the dedicated endpoint below. Omitted fields are left unchanged. Unsupported fields are
+rejected. Assignment changes are performed in the same transaction as the task update.
+
+**Response** `200`: `{ "task": { ...board task fields... } }`.
+
+### `POST /api/task_assignment/tasks/{task_id}/status`
+
+Accepts `{ "status": "Not Started" | "In Progress" | "In Review" | "Blocked" | "Completed" }`.
+These are the five task statuses present in the live database. `Cancelled` is not a
+supported task status and is not mapped to another value. Completing sets
+`completion_percentage` to 100 and records `actual_completion_date`; reopening clears the
+date and resets a completion-generated 100% to 0 while preserving other progress values.
+
+**Response** `200`: `{ "status": "success", "task": { ...board task fields... } }`.
+
+### `POST /api/task_assignment/tasks/{task_id}/assign`
+
+Accepts `{ "employee_id": "<employee id>" }`. The task update and new
+`task_assignments` history record are committed together. Repeating the current assignment
+does not create a duplicate active record. To unassign, send `{ "employee_id": null }`;
+this clears `tasks.assigned_to` and leaves assignment history unchanged.
+
+**Response** `200`: `{ "task": { ...board task fields... }, "assignment": { ... } | null }`.
+
+### `DELETE /api/task_assignment/tasks/{task_id}`
+
+Deletes only tasks with no known related rows. It returns `409` if assignment history,
+scheduled events, feedback, reassignment recommendations, child tasks, or task dependency
+references exist; those records are not silently deleted.
+
+**Response** `200`: `{ "deleted": true, "task_id": "TSK..." }`.
+
+Task persistence uses the existing PostgreSQL schema; no migration is required.
+
 ---
 
 ## Not yet built

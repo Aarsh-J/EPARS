@@ -12,7 +12,18 @@ does not impute on its own. Formulas recovered verbatim from
 UI_v2:code/Model1/WBP-pp.py — see ml_models/README.md.
 """
 
-from db import get_connection
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT / "src")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
 
 from .feature_specs import BURNOUT_FEATURES, BURNOUT_LIVE_MEDIANS
 

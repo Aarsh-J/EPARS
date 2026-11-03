@@ -11,7 +11,18 @@ one; see ml_models/performance_feature_list.json). Formulas recovered verbatim
 from UI_v2:code/Model2_Performance/train.py (commit 811254b3, "updated model").
 """
 
-from db import get_connection
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT / "src")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
 
 from .feature_specs import PERFORMANCE_FEATURES, PERFORMANCE_RAW_MEDIANS, REVIEW_TYPE_ENCODING
 

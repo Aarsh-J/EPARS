@@ -14,11 +14,21 @@ If you change one, change the other and retrain.
 """
 
 import itertools
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
 
-from db import get_connection
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT / "src")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
 
 SENIORITY_RANK = {"Junior": 1, "Mid": 2, "Senior": 3, "Lead": 4, "Principal": 5}
 

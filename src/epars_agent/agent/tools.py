@@ -5,9 +5,21 @@ All tools are also wrapped as LangChain Tool objects at the bottom of this file,
 Tables used: employees, tasks, task_assignments, workload_history, burnout_indicators, performance_reviews, team_formations
 """
 import json
+import sys
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from db import get_connection
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT), str(_REPO_ROOT / "src")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
+
 from calendar_client import create_event, update_event, delete_event
 
 # Task Assignment model (Model 3, Layer 3) lives in modules/ml/, outside this
@@ -15,11 +27,6 @@ from calendar_client import create_event, update_event, delete_event
 # which works because src/epars_agent/agent (this directory) is already on
 # sys.path when tools.py loads — so we only need the repo root added too, for
 # `modules` itself to be importable.
-import sys
-from pathlib import Path
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 from modules.ml.task_assignment_predict import recommend_top_n, score_pair
 from modules.ml.predict import predict_performance, predict_burnout
 from modules.ml.team_formation_predict import recommend_teams, check_composition
