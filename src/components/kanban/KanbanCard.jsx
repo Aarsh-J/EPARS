@@ -1,5 +1,4 @@
-import { IssueTypeIcon, PriorityIcon } from "./KanbanIcons.jsx";
-import { TEAM_MEMBERS, DEFAULT_COLUMNS } from "../../data/kanbanData.js";
+import { PriorityIcon } from "./KanbanIcons.jsx";
 
 export default function KanbanCard({
   task,
@@ -11,16 +10,17 @@ export default function KanbanCard({
   onDropOnCard,
   onOpenDetail,
   onMoveColumn,
+  columns,
   density = "normal",
 }) {
-  const assignee = TEAM_MEMBERS.find((m) => m.id === task.assigneeId);
-  const currentColIndex = DEFAULT_COLUMNS.findIndex((c) => c.id === task.status);
-  const prevCol = currentColIndex > 0 ? DEFAULT_COLUMNS[currentColIndex - 1] : null;
-  const nextCol = currentColIndex < DEFAULT_COLUMNS.length - 1 ? DEFAULT_COLUMNS[currentColIndex + 1] : null;
+  const assignee = task.assignee;
+  const currentColIndex = columns.findIndex((column) => column.id === task.status);
+  const prevCol = currentColIndex > 0 ? columns[currentColIndex - 1] : null;
+  const nextCol = currentColIndex < columns.length - 1 ? columns[currentColIndex + 1] : null;
 
   // Due date status
   let dueDateClass = "";
-  if (task.dueDate && task.status !== "done") {
+  if (task.dueDate && task.status !== "Completed") {
     const due = new Date(task.dueDate);
     const now = new Date();
     const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
@@ -60,10 +60,9 @@ export default function KanbanCard({
         role="button"
         aria-label={`Task ${task.id}: ${task.title}`}
       >
-        {/* Card Header: Type, Key, Priority, Quick Move Actions */}
+        {/* Card Header: Key, Priority, Quick Move Actions */}
         <div className="card-top-row">
           <div className="card-key-group">
-            <IssueTypeIcon type={task.type} size={14} />
             <span className="card-issue-key">{task.id}</span>
           </div>
 
@@ -101,16 +100,16 @@ export default function KanbanCard({
         {/* Card Title */}
         <div className="card-title-text">{task.title}</div>
 
-        {/* Tags / Skills */}
-        {density !== "compact" && task.tags && task.tags.length > 0 && (
+        {/* Required skills are backed by tasks.required_skills. */}
+        {density !== "compact" && task.requiredSkills?.length > 0 && (
           <div className="card-tags-row">
-            {task.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="card-tag-pill">
-                {tag}
+            {task.requiredSkills.slice(0, 3).map((skill) => (
+              <span key={skill} className="card-tag-pill">
+                {skill}
               </span>
             ))}
-            {task.tags.length > 3 && (
-              <span className="card-tag-pill more">+{task.tags.length - 3}</span>
+            {task.requiredSkills.length > 3 && (
+              <span className="card-tag-pill more">+{task.requiredSkills.length - 3}</span>
             )}
           </div>
         )}
@@ -134,11 +133,11 @@ export default function KanbanCard({
             )}
           </div>
 
-          <div className="card-assignee-wrap" title={assignee ? `${assignee.name} (${assignee.role})` : "Unassigned"}>
+          <div className="card-assignee-wrap" title={assignee ? `${assignee.name}${assignee.role ? ` (${assignee.role})` : ""}` : "Unassigned"}>
             {assignee ? (
               <div
                 className="card-assignee-avatar"
-                style={{ backgroundColor: assignee.color }}
+                style={{ backgroundColor: "#64748b" }}
               >
                 {assignee.avatar}
               </div>

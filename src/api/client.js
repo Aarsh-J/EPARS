@@ -102,6 +102,82 @@ export function updateTaskStatus(taskId, status) {
   });
 }
 
+export function createKanbanTask(task) {
+  return request("/api/task_assignment/tasks", {
+    method: "POST",
+    body: JSON.stringify(task),
+  });
+}
+
+export function updateKanbanTask(taskId, changes) {
+  return request(`/api/task_assignment/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PUT",
+    body: JSON.stringify(changes),
+  });
+}
+
+export function assignKanbanTask(taskId, employeeId) {
+  return request(`/api/task_assignment/tasks/${encodeURIComponent(taskId)}/assign`, {
+    method: "POST",
+    body: JSON.stringify({ employee_id: employeeId }),
+  });
+}
+
+export function deleteKanbanTask(taskId) {
+  return request(`/api/task_assignment/tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function getKanbanProjects() {
+  return request("/api/task_assignment/board_projects");
+}
+
+export function getKanbanEmployees() {
+  return request("/api/task_assignment/board_employees");
+}
+
+export function getKanbanBoard({
+  projectIds = [],
+  includeOtherTasks = false,
+  projectView = "active",
+  employeeId = "",
+  unassignedOnly = false,
+  dateFilter = "all",
+  startDate = "",
+  endDate = "",
+  search = "",
+  statusFilter = "",
+  priorityFilter = "",
+  highPriorityOnly = false,
+  sortBy = "due_date",
+  sortOrder = "asc",
+  page = 1,
+  pageSize = 50,
+} = {}) {
+  const params = new URLSearchParams({
+    include_other_tasks: String(includeOtherTasks),
+    project_view: projectView,
+    date_filter: dateFilter,
+    sort_by: sortBy,
+    sort_order: sortOrder,
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  projectIds.forEach((projectId) => params.append("project_ids", projectId));
+  if (employeeId && employeeId !== "all" && employeeId !== "unassigned") {
+    params.set("employee_id", employeeId);
+  }
+  if (unassignedOnly || employeeId === "unassigned") params.set("unassigned_only", "true");
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+  if (search.trim()) params.set("search", search.trim());
+  if (statusFilter) params.set("status_filter", statusFilter);
+  if (priorityFilter) params.set("priority_filter", priorityFilter);
+  if (highPriorityOnly) params.set("high_priority_only", "true");
+  return request(`/api/task_assignment/board?${params.toString()}`);
+}
+
 export function getProjectsWithOpenTasks(limit = 200) {
   return request(`/api/team_formation/projects?limit=${limit}`);
 }
@@ -118,5 +194,3 @@ export function checkTeamComposition(employeeIds) {
   const idsStr = Array.isArray(employeeIds) ? employeeIds.join(",") : employeeIds;
   return request(`/api/team_formation/composition?employee_ids=${encodeURIComponent(idsStr)}`);
 }
-
-
