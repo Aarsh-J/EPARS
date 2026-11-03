@@ -123,7 +123,7 @@ export const FORM_GROUPS = [
         who: "Project Manager",
         description:
           "Register a new project with its timeline, budget, manager, priority, and required skills.",
-        url: "https://docs.google.com/forms/d/1dCZMKUY6n82PTivQv4hH5ed_rBS3RC7nYB5ajkqqXvA/edit",
+        url: "https://docs.google.com/forms/d/1dCZMKUY6n82PTivQv4hH5ed_rBS3RC7nYB5ajkqqXvA/viewform",
       },
       {
         code: "F4",
@@ -131,7 +131,7 @@ export const FORM_GROUPS = [
         who: "Project Manager / Lead",
         description:
           "Define a new task with role requirements, story points, complexity, and dependencies.",
-        url: "https://docs.google.com/forms/d/1HRE6zPI3XGhf_rjEfJnTdzoaS5yarascRzLuP_WpAFw/edit",
+        url: "https://docs.google.com/forms/d/1HRE6zPI3XGhf_rjEfJnTdzoaS5yarascRzLuP_WpAFw/viewform",
       },
       {
         code: "F7",
@@ -139,7 +139,7 @@ export const FORM_GROUPS = [
         who: "Assignee",
         description:
           "Accept or decline a task assignment. Declining records the reassignment reason.",
-        url: "https://docs.google.com/forms/d/1lDIuo5DHVqdPjRJgOnQnEvsR6gmBhzymTKENVOiRC7I/edit",
+        url: "https://docs.google.com/forms/d/1lDIuo5DHVqdPjRJgOnQnEvsR6gmBhzymTKENVOiRC7I/viewform",
       },
       {
         code: "F14",
@@ -147,7 +147,7 @@ export const FORM_GROUPS = [
         who: "Manager / Lead",
         description:
           "Formally establish a project team with a team lead, member roster, and formation method.",
-        url: "https://docs.google.com/forms/d/1_RkQkr2StG8jovsJVp_hwKIL3imZytf900GaX2DZIf8/edit",
+        url: "https://docs.google.com/forms/d/1_RkQkr2StG8jovsJVp_hwKIL3imZytf900GaX2DZIf8/viewform",
       },
       {
         code: "F15",
@@ -155,7 +155,7 @@ export const FORM_GROUPS = [
         who: "Organizer / Manager",
         description:
           "Schedule meetings and events across participants to update calendars and track workload.",
-        url: "https://docs.google.com/forms/d/1dwOXrsGeDH1VBpUm0oOQRTwMbKZcc_zZMvnwfFX_1xk/edit",
+        url: "https://docs.google.com/forms/d/1dwOXrsGeDH1VBpUm0oOQRTwMbKZcc_zZMvnwfFX_1xk/viewform",
       },
       {
         code: "F15b",
