@@ -24,10 +24,22 @@ that tier as informational-only rather than pretending otherwise.
 """
 
 import json
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT / "src"), str(_REPO_ROOT / "src" / "epars_policies")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
 
 from calendar_client import list_events
-from db import get_connection
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
+
 from tools import (
     _to_list,
     assign_task,

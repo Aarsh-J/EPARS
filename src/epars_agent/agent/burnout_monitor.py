@@ -18,12 +18,24 @@ Run:
     python burnout_monitor.py
 """
 
-import os
 import json
+import os
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-from db import get_connection
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT / "src"), str(_REPO_ROOT / "src" / "epars_policies")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
+
 from calendar_client import list_events
 from tools import (
     get_task_details,

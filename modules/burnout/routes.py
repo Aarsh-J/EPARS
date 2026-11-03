@@ -12,12 +12,23 @@ is never written to directly. /employees and /analyse both prefer the latest
 the stored burnout_indicators.burnout_category.
 """
 
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from db import get_connection
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT / "src")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
+
 from tools import get_employee_profile, _to_list
 
 from ..ml.reassignment import assess_and_recommend, execute_recommendation
