@@ -433,7 +433,8 @@ def _select_rosters(
             newly_covered = {
                 task_id for task_id in task_ids if employee_id in task_members[task_id]
             }
-            search(index + 1, covered_tasks | newly_covered)
+            if _has_member_task_matching(chosen, candidates_per_task):
+                search(index + 1, covered_tasks | newly_covered)
             chosen.remove(employee_id)
             if len(results) >= limit or truncated:
                 return

@@ -292,12 +292,16 @@ def prepare_team_formation_data(project_id: str) -> dict:
 def list_projects_with_open_tasks(limit: int = 200) -> list:
     """Projects that have open tasks — candidate list for a selector UI."""
     sql = """
-        SELECT p.project_id, p.project_name, p.current_status, p.team_size,
+        SELECT p.project_id, p.project_name, p.project_description, p.priority,
+               p.start_date, p.planned_end_date, p.current_status,
+               p.project_manager_id, p.team_size, p.required_skills,
                COUNT(t.task_id) AS open_task_count
         FROM projects p
         JOIN tasks t ON t.project_id = p.project_id
         WHERE t.status IS NULL OR t.status NOT IN ('Completed', 'Cancelled')
-        GROUP BY p.project_id, p.project_name, p.current_status, p.team_size
+        GROUP BY p.project_id, p.project_name, p.project_description, p.priority,
+                 p.start_date, p.planned_end_date, p.current_status,
+                 p.project_manager_id, p.team_size, p.required_skills
         ORDER BY open_task_count DESC, p.project_id
         LIMIT %s
     """

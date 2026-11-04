@@ -166,9 +166,10 @@ its work, not just the final answer.
 ## `GET /api/team_formation/projects`
 
 Lists projects with open tasks for the Team Formation selector. Each project row
-includes `project_id`, `project_name`, `current_status`, `open_task_count`, and
-the database value of `projects.team_size`. A missing team size is returned as
-`null`; this endpoint does not update project data.
+includes `project_id`, `project_name`, `project_description`, `current_status`,
+`team_size`, `priority`, `start_date`, `planned_end_date`,
+`project_manager_id`, `required_skills`, and `open_task_count`. A missing team
+size is returned as `null`; this endpoint does not update project data.
 
 Team Formation data preparation is provided by
 `modules/ml/team_formation_features.py`. Its open-task records include existing
@@ -178,6 +179,37 @@ and estimated hours; assignment-history rows are not joined. The prepared
 workload is the sum of original non-null estimates without an added time
 horizon; tasks with a missing estimate are counted separately rather than
 assigned an inferred duration.
+
+## `PATCH /api/team_formation/projects/{project_id}`
+
+Updates only the supplied project fields using existing `projects` columns.
+Supported fields are `project_name`, `project_description`, `current_status`,
+`team_size`, `priority`, `start_date`, `planned_end_date`,
+`project_manager_id`, and `required_skills`. `team_size` must be a positive
+integer; `project_name`, `current_status`, and `priority` cannot be blank.
+`project_description`, dates, `project_manager_id`, and `required_skills` may be
+`null`. A supplied manager ID must identify an employee, and the start date
+cannot be after the planned end date. Unknown fields and empty update bodies are
+rejected.
+
+**Request**:
+```json
+{
+  "project_name": "Updated project name",
+  "project_description": "Updated description",
+  "current_status": "Active",
+  "team_size": 5,
+  "priority": "High",
+  "start_date": "2026-01-15",
+  "planned_end_date": "2026-12-31",
+  "project_manager_id": "EMP012",
+  "required_skills": "Python, PostgreSQL"
+}
+```
+
+Returns the updated project fields with HTTP `200`, returns `404` for an unknown
+project, and `422` for invalid fields. This endpoint updates existing project
+columns only and does not change the database schema.
 
 ## `GET /api/team_formation/recommend/{project_id}`
 

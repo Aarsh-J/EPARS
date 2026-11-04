@@ -209,6 +209,126 @@ class TeamFormationAlgorithmTests(unittest.TestCase):
                 1,
             )
 
+    def test_impossible_partial_roster_is_pruned_before_descending(self):
+        candidates = {
+            "T1": [candidate("T1", "A"), candidate("T1", "B")],
+            "T2": [candidate("T2", "C")],
+            "T3": [candidate("T3", "D")],
+        }
+        real_matching = predictor._has_member_task_matching
+        matching_checks = []
+
+        def track_matching(roster, candidate_map):
+            matching_checks.append(frozenset(roster))
+            return real_matching(roster, candidate_map)
+
+        with patch.object(predictor, "_has_member_task_matching", side_effect=track_matching):
+            rosters, truncated = predictor._select_rosters(
+                candidates,
+                team_size=3,
+                employee_priority={member: (member,) for member in "ABCD"},
+                limit=2,
+            )
+
+        self.assertFalse(truncated)
+        self.assertEqual(rosters, [{"A", "C", "D"}, {"B", "C", "D"}])
+        self.assertIn(frozenset({"A", "B"}), matching_checks)
+        self.assertNotIn(frozenset({"A", "B", "C"}), matching_checks)
+        self.assertNotIn(frozenset({"A", "B", "D"}), matching_checks)
+
+    def test_feasible_partial_roster_continues_search(self):
+        candidates = {
+            "T1": [candidate("T1", "A"), candidate("T1", "B")],
+            "T2": [candidate("T2", "B"), candidate("T2", "C")],
+            "T3": [candidate("T3", "C"), candidate("T3", "D")],
+        }
+        real_matching = predictor._has_member_task_matching
+        matching_checks = []
+
+        def track_matching(roster, candidate_map):
+            matching_checks.append(frozenset(roster))
+            return real_matching(roster, candidate_map)
+
+        with patch.object(predictor, "_has_member_task_matching", side_effect=track_matching):
+            rosters, truncated = predictor._select_rosters(
+                candidates,
+                team_size=3,
+                employee_priority={member: (member,) for member in "ABCD"},
+                limit=1,
+            )
+
+        self.assertFalse(truncated)
+        self.assertEqual(rosters, [{"A", "B", "C"}])
+        self.assertIn(frozenset({"A", "B"}), matching_checks)
+
+    def test_matching_pruning_reduces_nodes_without_changing_valid_results(self):
+        candidates = {
+            "T1": [candidate("T1", "A"), candidate("T1", "B")],
+            "T2": [candidate("T2", "C")],
+            "T3": [candidate("T3", "D")],
+        }
+        real_matching = predictor._has_member_task_matching
+        employee_priority = {member: (member,) for member in "ABCD"}
+
+        with patch.object(
+            predictor,
+            "_has_member_task_matching",
+            side_effect=lambda roster, candidate_map: (
+                True
+                if len(roster) < 3
+                else real_matching(roster, candidate_map)
+            ),
+        ):
+            unpruned_rosters, unpruned_truncated = predictor._select_rosters(
+                candidates,
+                team_size=3,
+                employee_priority=employee_priority,
+                limit=2,
+            )
+        with patch.object(predictor, "MAX_ROSTER_SEARCH_NODES", 4):
+            rosters, truncated = predictor._select_rosters(
+                candidates,
+                team_size=3,
+                employee_priority=employee_priority,
+                limit=1,
+            )
+        pruned_all_rosters, pruned_all_truncated = predictor._select_rosters(
+            candidates,
+            team_size=3,
+            employee_priority=employee_priority,
+            limit=2,
+        )
+
+        self.assertEqual(unpruned_rosters, [{"A", "C", "D"}, {"B", "C", "D"}])
+        self.assertFalse(unpruned_truncated)
+        self.assertEqual(pruned_all_rosters, unpruned_rosters)
+        self.assertFalse(pruned_all_truncated)
+        self.assertEqual(rosters, [{"A", "C", "D"}])
+        self.assertFalse(truncated)
+
+        with (
+            patch.object(predictor, "MAX_ROSTER_SEARCH_NODES", 4),
+            patch.object(
+                predictor,
+                "_has_member_task_matching",
+                side_effect=lambda roster, candidate_map: (
+                    True
+                    if len(roster) < 3
+                    else real_matching(roster, candidate_map)
+                ),
+            ),
+        ):
+            limited_unpruned_rosters, limited_unpruned_truncated = (
+                predictor._select_rosters(
+                    candidates,
+                    team_size=3,
+                    employee_priority=employee_priority,
+                    limit=1,
+                )
+            )
+        self.assertEqual(limited_unpruned_rosters, [])
+        self.assertTrue(limited_unpruned_truncated)
+
     def test_existing_project_task_hours_are_removed_before_reallocation(self):
         tasks = [
             task("T1", hours=10, assigned_to="A"),
@@ -375,6 +495,7 @@ class TeamFormationAlgorithmTests(unittest.TestCase):
         }
         with (
             patch.object(predictor.tff, "prepare_team_formation_data", return_value=prepared),
+            patch.object(predictor.tff, "load_historical_pairs", return_value=set()),
             patch.object(predictor, "recommend_top_n", side_effect=lambda task_id, _top_n: candidates[task_id]),
             patch.object(
                 predictor,

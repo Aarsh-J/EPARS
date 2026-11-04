@@ -8,12 +8,13 @@ Recommendations are temporary; only the explicit confirmation endpoint writes.
 """
 
 import logging
+from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from psycopg2.errors import SerializationFailure, UniqueViolation
 
-from ..ml.team_formation_features import list_projects_with_open_tasks
+from ..ml.team_formation_features import get_connection, list_projects_with_open_tasks
 from ..ml.team_formation_predict import (
     InfeasibleTeamFormationError,
     TeamFormationSearchExhaustedError,
@@ -34,6 +35,21 @@ class TeamFormationConfirmationRequest(BaseModel):
         extra = "forbid"
 
 
+class ProjectUpdateRequest(BaseModel):
+    project_name: str | None = Field(default=None, max_length=200)
+    project_description: str | None = None
+    current_status: str | None = Field(default=None, max_length=50)
+    team_size: StrictInt | None = None
+    priority: str | None = Field(default=None, max_length=20)
+    start_date: date | None = None
+    planned_end_date: date | None = None
+    project_manager_id: str | None = Field(default=None, max_length=20)
+    required_skills: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
 @router.get("/projects")
 def list_projects(limit: int = 200):
     """Projects that have open tasks, for the selector UI."""
@@ -41,6 +57,94 @@ def list_projects(limit: int = 200):
         return list_projects_with_open_tasks(limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/projects/{project_id}")
+def update_project(project_id: str, payload: ProjectUpdateRequest):
+    """Update explicitly supplied project details using existing project columns."""
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=422, detail="At least one project field is required.")
+
+    for field in ("project_name", "current_status", "priority"):
+        if field in updates:
+            value = updates[field]
+            if not isinstance(value, str) or not value.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{field} must be a non-empty string.",
+                )
+            updates[field] = value.strip()
+    if "team_size" in updates:
+        team_size = updates["team_size"]
+        if team_size is None or team_size < 1:
+            raise HTTPException(status_code=422, detail="team_size must be a positive integer.")
+    if "project_description" in updates and updates["project_description"] is not None:
+        updates["project_description"] = updates["project_description"].strip()
+
+    assignments = ", ".join(f"{field} = %s" for field in updates)
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT start_date, planned_end_date
+                    FROM projects
+                    WHERE project_id = %s
+                    FOR UPDATE
+                    """,
+                    (project_id,),
+                )
+                existing = cur.fetchone()
+                if not existing:
+                    raise HTTPException(
+                        status_code=404, detail=f"Unknown project_id: {project_id!r}"
+                    )
+
+                start_date = updates.get("start_date", existing["start_date"])
+                planned_end_date = updates.get(
+                    "planned_end_date", existing["planned_end_date"]
+                )
+                if (
+                    start_date is not None
+                    and planned_end_date is not None
+                    and start_date > planned_end_date
+                ):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="start_date cannot be after planned_end_date.",
+                    )
+
+                manager_id = updates.get("project_manager_id")
+                if manager_id is not None:
+                    cur.execute(
+                        "SELECT 1 FROM employees WHERE employee_id = %s",
+                        (manager_id,),
+                    )
+                    if not cur.fetchone():
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Unknown project_manager_id: {manager_id!r}",
+                        )
+
+                sql = f"""
+                    UPDATE projects
+                    SET {assignments}, last_updated = NOW()
+                    WHERE project_id = %s
+                    RETURNING project_id, project_name, project_description,
+                              current_status, team_size, priority, department,
+                              start_date, planned_end_date, project_manager_id,
+                              required_skills
+                """
+                params = [*updates.values(), project_id]
+                cur.execute(sql, params)
+                project = cur.fetchone()
+        return dict(project)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unable to update Team Formation project %s", project_id)
+        raise HTTPException(status_code=500, detail="Unable to update project details.") from exc
 
 
 @router.get("/recommend/{project_id}")
