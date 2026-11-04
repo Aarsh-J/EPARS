@@ -166,7 +166,7 @@ def _next_assignment_id(cur):
     return f"ASG{int(cur.fetchone()['max_num']) + 1:04d}"
 
 
-def _apply_assignment(cur, task_id, employee_id):
+def _apply_assignment(cur, task_id, employee_id, assignment_method="Manual"):
     cur.execute(
         "SELECT project_id, assigned_to, status FROM tasks WHERE task_id = %s FOR UPDATE",
         (task_id,),
@@ -231,14 +231,21 @@ def _apply_assignment(cur, task_id, employee_id):
                 last_updated
             )
             VALUES (
-                %s, %s, %s, %s, CURRENT_DATE, 'Manual',
+                %s, %s, %s, %s, CURRENT_DATE, %s,
                 CASE WHEN %s = 'Completed' THEN 'Completed' ELSE 'Assigned' END,
                 NOW(), NOW()
             )
             ON CONFLICT (assignment_id) DO NOTHING
             RETURNING assignment_id
             """,
-            (candidate_id, task_id, employee_id, task["project_id"], task["status"]),
+            (
+                candidate_id,
+                task_id,
+                employee_id,
+                task["project_id"],
+                assignment_method,
+                task["status"],
+            ),
         )
         inserted = cur.fetchone()
         if inserted:

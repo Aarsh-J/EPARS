@@ -14,6 +14,7 @@ If you change one, change the other and retrain.
 """
 
 import itertools
+import math
 import sys
 import time
 from pathlib import Path
@@ -35,9 +36,9 @@ SENIORITY_RANK = {"Junior": 1, "Mid": 2, "Senior": 3, "Lead": 4, "Principal": 5}
 # Feature order is read from the model bundle at predict time; this list is only
 # used to build the dict. Kept in sync with the bundle's "feature_columns".
 _EMPLOYEE_SQL_COLS = [
-    "employee_id", "department", "seniority_level", "years_of_experience",
+    "employee_id", "first_name", "last_name", "department", "seniority_level", "years_of_experience",
     "technical_proficiency_score", "collaboration_score", "burnout_risk_score",
-    "primary_skills", "secondary_skills",
+    "weekly_capacity_hours", "primary_skills", "secondary_skills",
 ]
 
 # Skill sets / burnout are cheap to reload per request (1 query, ~1500 rows) and
@@ -59,15 +60,18 @@ def _split_skills(*values) -> set:
     return skills
 
 
-def load_employee_records() -> dict:
-    """employee_id -> plain dict. One query; plain dicts keep per-team feature
-    computation cheap enough for exact-mode search (thousands of rosters)."""
+def _fetch_employee_rows() -> list[dict]:
     sql = f"SELECT {', '.join(_EMPLOYEE_SQL_COLS)} FROM employees"
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql)
-            rows = cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
 
+
+def load_employee_records() -> dict:
+    """employee_id -> plain dict. One query; plain dicts keep per-team feature
+    computation cheap enough for exact-mode search (thousands of rosters)."""
+    rows = _fetch_employee_rows()
     records = {}
     for r in rows:
         level = r.get("seniority_level")
@@ -85,10 +89,41 @@ def load_employee_records() -> dict:
     return records
 
 
+def _optional_float(value) -> float | None:
+    return float(value) if value is not None else None
+
+
+def get_employee_profiles() -> list[dict]:
+    """Return employee profile data needed to prepare a team recommendation."""
+    profiles = []
+    for row in _fetch_employee_rows():
+        name_parts = [
+            str(row.get(field)).strip()
+            for field in ("first_name", "last_name")
+            if row.get(field) is not None and str(row[field]).strip()
+        ]
+        profiles.append({
+            "employee_id": row["employee_id"],
+            "employee_name": " ".join(name_parts) or None,
+            "department": row.get("department"),
+            "seniority_level": row.get("seniority_level"),
+            "years_of_experience": _optional_float(row.get("years_of_experience")),
+            "primary_skills": row.get("primary_skills"),
+            "secondary_skills": row.get("secondary_skills"),
+            "technical_proficiency_score": _optional_float(row.get("technical_proficiency_score")),
+            "collaboration_score": _optional_float(row.get("collaboration_score")),
+            "burnout_risk_score": _optional_float(row.get("burnout_risk_score")),
+            "weekly_capacity_hours": _optional_float(row.get("weekly_capacity_hours")),
+        })
+    return profiles
+
+
 def load_historical_pairs() -> set:
-    """Every member-pair that has ever co-occurred in a formed team
-    (members + team lead) — a real synergy proxy, unlike the noisy
-    collaborative_history_score column."""
+    """Return every pair that co-occurred in a recorded team formation.
+
+    This records historical co-occurrence only; it does not establish successful
+    collaboration or any team outcome.
+    """
     now = time.time()
     if _pairs_cache["pairs"] is not None and now - _pairs_cache["at"] < _PAIRS_TTL_SECONDS:
         return _pairs_cache["pairs"]
@@ -128,15 +163,141 @@ def get_project_tasks(project_id: str, task_ids: list | None = None, include_clo
             return [dict(r) for r in cur.fetchall()]
 
 
+def get_project_context(project_id: str) -> dict:
+    """Return project metadata and validate its authoritative team size."""
+    sql = """
+        SELECT p.project_id, p.project_name, p.current_status, p.team_size,
+               COUNT(t.task_id) AS open_task_count
+        FROM projects p
+        LEFT JOIN tasks t
+          ON t.project_id = p.project_id
+         AND (t.status IS NULL OR t.status NOT IN ('Completed', 'Cancelled'))
+        WHERE p.project_id = %s
+        GROUP BY p.project_id, p.project_name, p.current_status, p.team_size
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (project_id,))
+            row = cur.fetchone()
+    if not row:
+        raise ValueError(f"Unknown project_id: {project_id!r}")
+
+    raw_team_size = row.get("team_size")
+    try:
+        numeric_team_size = float(raw_team_size)
+    except (TypeError, ValueError, OverflowError):
+        numeric_team_size = math.nan
+    if (
+        raw_team_size is None
+        or isinstance(raw_team_size, bool)
+        or not math.isfinite(numeric_team_size)
+        or not numeric_team_size.is_integer()
+        or numeric_team_size < 1
+    ):
+        raise ValueError(
+            f"Project {project_id!r} has invalid team_size: {raw_team_size!r}"
+        )
+
+    context = dict(row)
+    context["team_size"] = int(numeric_team_size)
+    context["open_task_count"] = int(context["open_task_count"] or 0)
+    return context
+
+
+def get_open_project_tasks(project_id: str) -> list[dict]:
+    """Return all open project tasks, including tasks that already have an assignee.
+
+    Existing team formation also considers every open project task regardless of
+    assigned_to. The current assignee is returned so a future workflow can make
+    an explicit retain/reconsider decision rather than silently dropping it.
+    """
+    sql = """
+        SELECT task_id, task_name, project_id, status, required_skills,
+               estimated_hours, assigned_to
+        FROM tasks
+        WHERE project_id = %s
+          AND (status IS NULL OR status NOT IN ('Completed', 'Cancelled'))
+        ORDER BY task_id
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (project_id,))
+            rows = cur.fetchall()
+    tasks = []
+    for row in rows:
+        task = dict(row)
+        task["estimated_hours"] = _optional_float(task.get("estimated_hours"))
+        tasks.append(task)
+    return tasks
+
+
+def get_existing_employee_workloads(employee_ids: list[str]) -> dict[str, dict]:
+    """Sum known estimated hours from open tasks currently assigned to employees.
+
+    Reads tasks.assigned_to, not task_assignments, because task_assignments is
+    maintained as assignment history and can contain multiple rows per task.
+    Missing estimates contribute no hours but are counted explicitly.
+    """
+    workloads = {
+        employee_id: {
+            "estimated_hours": 0.0,
+            "task_count": 0,
+            "missing_estimated_hours_count": 0,
+        }
+        for employee_id in dict.fromkeys(employee_ids)
+    }
+    sql = """
+        SELECT assigned_to, estimated_hours
+        FROM tasks
+        WHERE assigned_to IS NOT NULL
+          AND (status IS NULL OR status NOT IN ('Completed', 'Cancelled'))
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    for row in rows:
+        employee_id = row["assigned_to"]
+        workload = workloads.setdefault(employee_id, {
+            "estimated_hours": 0.0,
+            "task_count": 0,
+            "missing_estimated_hours_count": 0,
+        })
+        workload["task_count"] += 1
+        hours = row.get("estimated_hours")
+        if hours is None:
+            workload["missing_estimated_hours_count"] += 1
+        else:
+            workload["estimated_hours"] += float(hours)
+    return workloads
+
+
+def prepare_team_formation_data(project_id: str) -> dict:
+    """Fetch project, task, employee, and workload data without running selection."""
+    project = get_project_context(project_id)
+    tasks = get_open_project_tasks(project_id)
+    employees = get_employee_profiles()
+    workloads = get_existing_employee_workloads(
+        [employee["employee_id"] for employee in employees]
+    )
+    return {
+        "project": project,
+        "tasks": tasks,
+        "employees": employees,
+        "existing_workloads": workloads,
+    }
+
+
 def list_projects_with_open_tasks(limit: int = 200) -> list:
     """Projects that have open tasks — candidate list for a selector UI."""
     sql = """
-        SELECT p.project_id, p.project_name, p.current_status,
+        SELECT p.project_id, p.project_name, p.current_status, p.team_size,
                COUNT(t.task_id) AS open_task_count
         FROM projects p
         JOIN tasks t ON t.project_id = p.project_id
         WHERE t.status IS NULL OR t.status NOT IN ('Completed', 'Cancelled')
-        GROUP BY p.project_id, p.project_name, p.current_status
+        GROUP BY p.project_id, p.project_name, p.current_status, p.team_size
         ORDER BY open_task_count DESC, p.project_id
         LIMIT %s
     """
