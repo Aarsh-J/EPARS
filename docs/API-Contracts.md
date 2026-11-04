@@ -163,6 +163,198 @@ Backed by: `run_agent()` in `src/epars_agent/agent/epars_agent.py` — the exact
 `steps` is the ordered list of tool calls the agent made — useful for the frontend to show
 its work, not just the final answer.
 
+## `GET /api/team_formation/projects`
+
+Lists projects with open tasks for the Team Formation selector. Each project row
+includes `project_id`, `project_name`, `project_description`, `current_status`,
+`team_size`, `priority`, `start_date`, `planned_end_date`,
+`project_manager_id`, `required_skills`, and `open_task_count`. A missing team
+size is returned as `null`; this endpoint does not update project data.
+
+Team Formation data preparation is provided by
+`modules/ml/team_formation_features.py`. Its open-task records include existing
+`tasks.assigned_to` values rather than silently filtering assigned tasks.
+Existing workload is read from open tasks' current `tasks.assigned_to` values
+and estimated hours; assignment-history rows are not joined. The prepared
+workload is the sum of original non-null estimates without an added time
+horizon; tasks with a missing estimate are counted separately rather than
+assigned an inferred duration.
+
+## `PATCH /api/team_formation/projects/{project_id}`
+
+Updates only the supplied project fields using existing `projects` columns.
+Supported fields are `project_name`, `project_description`, `current_status`,
+`team_size`, `priority`, `start_date`, `planned_end_date`,
+`project_manager_id`, and `required_skills`. `team_size` must be a positive
+integer; `project_name`, `current_status`, and `priority` cannot be blank.
+`project_description`, dates, `project_manager_id`, and `required_skills` may be
+`null`. A supplied manager ID must identify an employee, and the start date
+cannot be after the planned end date. Unknown fields and empty update bodies are
+rejected.
+
+**Request**:
+```json
+{
+  "project_name": "Updated project name",
+  "project_description": "Updated description",
+  "current_status": "Active",
+  "team_size": 5,
+  "priority": "High",
+  "start_date": "2026-01-15",
+  "planned_end_date": "2026-12-31",
+  "project_manager_id": "EMP012",
+  "required_skills": "Python, PostgreSQL"
+}
+```
+
+Returns the updated project fields with HTTP `200`, returns `404` for an unknown
+project, and `422` for invalid fields. This endpoint updates existing project
+columns only and does not change the database schema.
+
+## `GET /api/team_formation/recommend/{project_id}`
+
+Returns up to `num_teams` recommendations, each with a unique
+`team_member_ids` roster of exactly `projects.team_size` employees and one
+eligible employee assignment for every selected open task. Multiple tasks may
+be assigned to one roster member. `top_m` is passed to Model 3's existing
+`recommend_top_n()` interface; all returned pairs are eligible, with no added
+score threshold. The default candidate limit is 5; the API accepts 1 through 10.
+
+Roster search visits at most 200,000 recursive nodes and stops earlier after
+finding the requested number of rosters. It explores candidate employees in a
+deterministic heuristic order and does not guarantee a globally optimal result.
+If the search finishes within the node budget without a feasible roster, the
+candidate graph is proven infeasible and the endpoint returns HTTP `422`. If
+the node budget is exhausted before any feasible roster is found, the endpoint
+returns HTTP `503` to indicate that feasibility is undetermined. If one or more
+feasible rosters were found before exhaustion, those recommendations may be
+returned with `search_mode` set to
+`search_exhausted_with_feasible_rosters+greedy_allocation`.
+If the optional `task_ids` query parameter is provided, it must identify the
+complete set of open project tasks; a subset is rejected with HTTP `422`.
+
+Workload comparison is lexicographic: when every roster member has a finite
+positive weekly capacity, compare projected-hours/capacity spread first and
+projected-hours spread second. If any capacity is missing or invalid, compare
+projected-hours spread across the entire roster first, and compare utilization
+spread only among members with valid capacities as a tie-breaker. No capacity
+is imputed. Recommendations are read-only and do not persist task assignments
+or team formations.
+
+Each recommendation includes the six 0–100 scoring components in
+`score_breakdown` and their fixed fractional weights in `score_weights`:
+`task_fit` 0.45, `skill_coverage` 0.20, `experience_balance` 0.10,
+`workload_balance` 0.10, `historical_cooccurrence` 0.05, and
+`composition_typicality` 0.10. `team_score` is their weighted sum, computed
+from the displayed one-decimal component values. If any component cannot be
+calculated from available data, that component is `null`, its name appears in
+`score_unavailable_components`, and `team_score` is `null`; weights are never
+renormalized. The former `past_overlap` breakdown key is replaced by
+`historical_cooccurrence`; the latter measures recorded team-member
+co-occurrence only, not successful collaboration. Workload balance measures
+projected workload fairness, not burnout. Projected hours are current open-task
+hours across projects, less known hours for selected-project tasks being
+reallocated, plus the recommended assignments. With valid capacity for every
+member, projected load is hours divided by weekly capacity; otherwise raw
+projected hours are used for every member. The score is `100 * min(load) /
+max(load)`, or 100 when every load is zero. It is unavailable if an estimate
+or existing workload is missing. Skill coverage is unavailable when the
+selected tasks provide no required skills or a roster member's skill profile
+is missing; task fit is unavailable if any assigned candidate score is missing;
+experience balance is unavailable if seniority data is missing; historical
+co-occurrence is unavailable when there are fewer than two roster members or
+its source is unavailable; composition typicality is unavailable if a roster
+member is missing profile inputs used by the existing composition features.
+
+Composition typicality is an Isolation Forest advisory about resemblance to
+historical team compositions, not team quality, compatibility, or predicted
+friction.
+
+## `POST /api/team_formation/confirm/{project_id}`
+
+Recommendations are temporary. This endpoint persists only after an explicit
+manager confirmation and requires the selected `team_lead_id` to be in the
+recommended roster. Submit the full recommendation object returned by the
+recommendation endpoint; scoring fields are accepted for round-tripping but
+are ignored for persistence.
+
+**Request**:
+```json
+{
+  "team_lead_id": "EMP001",
+  "recommendation": {
+    "project_id": "PRJ001",
+    "project_status": "Active",
+    "candidate_limit": 5,
+    "team_size": 2,
+    "team_member_ids": ["EMP001", "EMP002"],
+    "assignments": [
+      {
+        "task_id": "TSK001",
+        "task_status": "Not Started",
+        "task_assigned_to": null,
+        "task_estimated_hours": 3,
+        "task_required_skills": "python",
+        "employee_id": "EMP001"
+      },
+      {
+        "task_id": "TSK002",
+        "task_status": "In Progress",
+        "task_assigned_to": "EMP001",
+        "task_estimated_hours": 4,
+        "task_required_skills": "sql",
+        "employee_id": "EMP002"
+      }
+    ]
+  }
+}
+```
+
+The example omits nonessential recommendation fields such as score details; a
+valid request must include the complete recommendation object and every
+currently open project task exactly once, with at least one task per roster
+member. The backend checks the project and task
+snapshot, authoritative `projects.team_size`, employee existence, lead
+membership, and each assignment against fresh Model 3 candidates at the
+recommendation's `candidate_limit`. Stale task/project state or changed
+eligibility returns HTTP `409`; malformed or infeasible roster structure
+returns HTTP `422`; unknown projects return HTTP `404`; repeated active AI
+formation for the same project/roster/lead returns HTTP `409`.
+
+On success, HTTP `201` returns `confirmed`, `team_id`, `project_id`,
+authoritative `team_size`, `team_lead_id`, `member_ids`, and task-to-
+`assignment_ids`. Since the existing schema stores the lead separately,
+`member_ids` excludes the lead while `team_size` includes it. `tasks.assigned_to`,
+assignment history, and the `team_formations` row are written in one
+serializable transaction. Any failure rolls back the full confirmation.
+`projects.team_size` is never updated. Distinct formations for a project are
+supported by the existing historical data, but confirmation is rejected with
+HTTP `409` while that project already has any active AI-Recommended formation,
+regardless of whether the new roster or lead differs. No schema change is
+required.
+The existing schema has no normalized team-member table or team-to-task
+association: roster members (excluding the lead) are stored as comma-separated
+`team_formations.member_ids`, while task assignments reference only task,
+employee, and project IDs. The confirmation response returns assignment IDs,
+but the persisted schema cannot directly link those assignment rows to the
+specific formation row.
+
+**Response** `201`:
+```json
+{
+  "confirmed": true,
+  "team_id": "TEAM1001",
+  "project_id": "PRJ001",
+  "team_size": 2,
+  "team_lead_id": "EMP001",
+  "member_ids": ["EMP002"],
+  "assignment_ids": {
+    "TSK001": "ASG1001",
+    "TSK002": "ASG1002"
+  }
+}
+```
+
 ## `GET /api/task_assignment/tasks`
 
 Open (not completed/cancelled) tasks for the selector UI.

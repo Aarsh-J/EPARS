@@ -162,13 +162,16 @@ def tool_score_employee_for_task(task_id: str, employee_id: str) -> str:
 def tool_recommend_team_for_project(project_id: str, num_teams: int = 3) -> str:
     """
     Builds the best TEAM for a project: one employee per open task, using the
-    Task Assignment ML model for per-task fit, then a team-level search that also
-    scores experience balance, workload balance, past collaboration and the Team
-    Composition model (how typical the roster is vs how teams are usually staffed).
+    Task Assignment ML model for per-task fit, then a team-level search scored on
+    task fit, skill coverage, experience balance, projected workload fairness,
+    historical team-member co-occurrence, and Isolation Forest composition
+    typicality. Co-occurrence does not indicate successful collaboration, and
+    composition typicality is not a measure of team quality or compatibility.
     project_id: e.g. PRJ001
     num_teams: how many alternative teams to return (default 3)
-    Returns ranked teams, each with team_score (0-100), score_breakdown,
-    assignments (task_id -> employee_id) and unusual_composition.
+    Returns recommendations with team_score (0-100 when all six components are
+    available, otherwise null), score_breakdown, score_weights, assignments
+    (task_id -> employee_id) and unusual_composition.
     unusual_composition=true is ADVISORY (the roster looks unlike past teams,
     e.g. many departments mixed) — it is NOT a policy violation; explain it and
     let the manager decide. When true, composition_notes says which traits are unusual.
