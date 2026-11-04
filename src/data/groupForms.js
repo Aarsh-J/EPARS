@@ -141,14 +141,14 @@ export const FORM_GROUPS = [
           "Accept or decline a task assignment. Declining records the reassignment reason.",
         url: "https://docs.google.com/forms/d/1lDIuo5DHVqdPjRJgOnQnEvsR6gmBhzymTKENVOiRC7I/viewform",
       },
-      {
-        code: "F14",
-        title: "Team Setup",
-        who: "Manager / Lead",
-        description:
-          "Formally establish a project team with a team lead, member roster, and formation method.",
-        url: "https://docs.google.com/forms/d/1_RkQkr2StG8jovsJVp_hwKIL3imZytf900GaX2DZIf8/viewform",
-      },
+      // {
+      //   code: "F14",
+      //   title: "Team Setup",
+      //   who: "Manager / Lead",
+      //   description:
+      //     "Formally establish a project team with a team lead, member roster, and formation method.",
+      //   url: "https://docs.google.com/forms/d/1_RkQkr2StG8jovsJVp_hwKIL3imZytf900GaX2DZIf8/viewform",
+      // },
       {
         code: "F15",
         title: "Event Details",

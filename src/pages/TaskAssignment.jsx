@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getOpenTasks, recommendForTask, scoreTaskAssignment } from "../api/client.js";
+import {
+  getOpenTasks,
+  recommendForTask,
+  scoreTaskAssignment,
+  assignKanbanTask,
+} from "../api/client.js";
 
 function scoreClass(score) {
   if (score == null) return "score-avg";
@@ -35,6 +40,10 @@ export default function TaskAssignment() {
   const [adHocError, setAdHocError] = useState(null);
   const [adHocLoading, setAdHocLoading] = useState(false);
 
+  const [assigningId, setAssigningId] = useState(null);
+  const [assignNotice, setAssignNotice] = useState(null);
+  const [assignError, setAssignError] = useState(null);
+
   useEffect(() => {
     getOpenTasks()
       .then(setTasks)
@@ -54,7 +63,9 @@ export default function TaskAssignment() {
     let rows = tasks;
     if (q) {
       rows = rows.filter((t) =>
-        ["task_id", "task_name", "task_type"].some((k) => String(t[k] ?? "").toLowerCase().includes(q))
+        ["task_id", "task_name", "task_type", "assigned_to"].some((k) =>
+          String(t[k] ?? "").toLowerCase().includes(q)
+        )
       );
     }
     for (const key of ["task_type", "priority", "required_role"]) {
@@ -80,6 +91,8 @@ export default function TaskAssignment() {
     setAdHocResult(null);
     setAdHocError(null);
     setAdHocEmployeeId("");
+    setAssignNotice(null);
+    setAssignError(null);
   }
 
   function handleRunRanking(taskId = selectedTask?.task_id) {
@@ -92,8 +105,6 @@ export default function TaskAssignment() {
       .finally(() => setRanking(false));
   }
 
-  // "Find Candidates" button — runs the model immediately instead of opening
-  // the no-model detail view first (that's what the row click does).
   function handleFindCandidatesNow(task) {
     setSelectedTask(task);
     setCandidates(null);
@@ -101,6 +112,8 @@ export default function TaskAssignment() {
     setAdHocResult(null);
     setAdHocError(null);
     setAdHocEmployeeId("");
+    setAssignNotice(null);
+    setAssignError(null);
     handleRunRanking(task.task_id);
   }
 
@@ -115,10 +128,46 @@ export default function TaskAssignment() {
       .finally(() => setAdHocLoading(false));
   }
 
+  function handleAssign(employeeId) {
+    if (!selectedTask || !employeeId) return;
+    setAssigningId(employeeId);
+    setAssignNotice(null);
+    setAssignError(null);
+
+    assignKanbanTask(selectedTask.task_id, employeeId)
+      .then(() => {
+        setAssignNotice(`Successfully assigned ${selectedTask.task_id} to ${employeeId}.`);
+        setSelectedTask((prev) => ({
+          ...prev,
+          assigned_to: employeeId,
+          status: prev.status === "Not Started" ? "In Progress" : prev.status,
+        }));
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.task_id === selectedTask.task_id
+              ? {
+                  ...t,
+                  assigned_to: employeeId,
+                  status: t.status === "Not Started" ? "In Progress" : t.status,
+                }
+              : t
+          )
+        );
+      })
+      .catch((err) => {
+        setAssignError(err.message || "Failed to assign task.");
+      })
+      .finally(() => {
+        setAssigningId(null);
+      });
+  }
+
   function resetView() {
     setSelectedTask(null);
     setCandidates(null);
     setRankError(null);
+    setAssignNotice(null);
+    setAssignError(null);
   }
 
   if (selectedTask) {
@@ -131,8 +180,58 @@ export default function TaskAssignment() {
               {selectedTask.task_name} &middot; {selectedTask.task_type} &middot; {selectedTask.priority} priority
               &middot; needs {selectedTask.required_role}
             </p>
+            <p style={{ marginTop: "0.35rem", fontSize: "0.88rem", color: "#64748b" }}>
+              Current Assignee:{" "}
+              {selectedTask.assigned_to ? (
+                <span
+                  style={{
+                    backgroundColor: "#e0f2fe",
+                    color: "#0369a1",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {selectedTask.assigned_to}
+                </span>
+              ) : (
+                <em style={{ color: "#94a3b8" }}>Unassigned</em>
+              )}
+            </p>
           </div>
         </div>
+
+        {assignNotice && (
+          <div
+            style={{
+              padding: "0.75rem 1rem",
+              borderRadius: "8px",
+              backgroundColor: "#dcfce7",
+              color: "#166534",
+              fontWeight: 500,
+              marginBottom: "1rem",
+              border: "1px solid #bbf7d0",
+            }}
+          >
+            ✓ {assignNotice}
+          </div>
+        )}
+
+        {assignError && (
+          <div
+            style={{
+              padding: "0.75rem 1rem",
+              borderRadius: "8px",
+              backgroundColor: "#fee2e2",
+              color: "#991b1b",
+              fontWeight: 500,
+              marginBottom: "1rem",
+              border: "1px solid #fecaca",
+            }}
+          >
+            ✕ {assignError}
+          </div>
+        )}
 
         {!ranking && !candidates && (
           <div className="card">
@@ -161,7 +260,15 @@ export default function TaskAssignment() {
             {candidates.length === 0 ? (
               <p className="live-score-note">No candidates found.</p>
             ) : (
-              candidates.map((c) => <CandidateCard key={c.employee_id} data={c} />)
+              candidates.map((c) => (
+                <CandidateCard
+                  key={c.employee_id}
+                  data={c}
+                  isAssigned={selectedTask.assigned_to === c.employee_id}
+                  onAssign={handleAssign}
+                  assigning={assigningId === c.employee_id}
+                />
+              ))
             )}
           </div>
         )}
@@ -183,7 +290,12 @@ export default function TaskAssignment() {
           {adHocError && <p style={{ color: "#991b1b", marginTop: "0.5rem" }}>{adHocError}</p>}
           {adHocResult && (
             <div style={{ marginTop: "1rem" }}>
-              <CandidateCard data={adHocResult} />
+              <CandidateCard
+                data={adHocResult}
+                isAssigned={selectedTask.assigned_to === adHocResult.employee_id}
+                onAssign={handleAssign}
+                assigning={assigningId === adHocResult.employee_id}
+              />
             </div>
           )}
         </div>
@@ -207,7 +319,7 @@ export default function TaskAssignment() {
         <input
           type="text"
           id="task-search"
-          placeholder="Search by ID, name or type…"
+          placeholder="Search by ID, name, role or assignee…"
           className="search-input"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -249,6 +361,7 @@ export default function TaskAssignment() {
               <th>Type</th>
               <th>Priority</th>
               <th>Required Role</th>
+              <th>Assigned To</th>
               <th>Due Date</th>
               <th>Status</th>
               <th></th>
@@ -262,6 +375,24 @@ export default function TaskAssignment() {
                 <td>{t.task_type}</td>
                 <td>{t.priority}</td>
                 <td>{t.required_role}</td>
+                <td>
+                  {t.assigned_to ? (
+                    <span
+                      style={{
+                        backgroundColor: "#f1f5f9",
+                        color: "#334155",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t.assigned_to}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#94a3b8" }}>—</span>
+                  )}
+                </td>
                 <td>{t.due_date ?? "—"}</td>
                 <td>{t.status}</td>
                 <td>
@@ -284,12 +415,46 @@ export default function TaskAssignment() {
   );
 }
 
-function CandidateCard({ data }) {
+function CandidateCard({ data, isAssigned = false, onAssign, assigning = false }) {
   return (
     <div className="card" style={{ marginBottom: "0.75rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>{data.employee_id}</strong>
-        <span className={`score-pill ${scoreClass(data.composite_score)}`}>{data.composite_score}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <strong style={{ fontSize: "1.05rem" }}>{data.employee_id}</strong>
+          {isAssigned && (
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: "999px",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                backgroundColor: "#dcfce7",
+                color: "#15803d",
+              }}
+            >
+              ✓ Currently Assigned
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <span className={`score-pill ${scoreClass(data.composite_score)}`}>{data.composite_score}</span>
+          {!isAssigned && onAssign && (
+            <button
+              className="btn-analyse btn-sm"
+              disabled={assigning}
+              onClick={() => onAssign(data.employee_id)}
+              style={{
+                padding: "4px 12px",
+                fontSize: "0.82rem",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              {assigning ? "Assigning…" : "Assign Task →"}
+            </button>
+          )}
+        </div>
       </div>
       <div className="cluster-list" style={{ marginTop: "0.5rem" }}>
         {COMPONENT_META.map(({ key, label }) => (
