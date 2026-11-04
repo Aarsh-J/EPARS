@@ -2478,3 +2478,133 @@ body:has(.kanban-page-wrap) > #root {
   border-radius: 4px;
   border: 1px solid #e2e8f0;
 }
+
+.team-project-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: linear-gradient(120deg, #eff6ff 0%, #ffffff 78%);
+}
+
+.team-project-hero h2 {
+  margin: 0.65rem 0 0.3rem;
+  color: #0f172a;
+}
+
+.team-project-hero p,
+.team-project-details-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.team-project-details {
+  padding: 1.4rem;
+}
+
+.team-project-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.team-project-details-header .card-title {
+  margin-bottom: 0.25rem;
+}
+
+.team-project-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.team-project-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.team-project-field {
+  min-width: 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.team-project-field-wide {
+  grid-column: 1 / -1;
+}
+
+.team-project-field-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.team-project-field-value {
+  min-height: 1.5rem;
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.team-project-control {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.team-project-control:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #3b82f6;
+}
+
+textarea.team-project-control {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.team-project-edit-error {
+  margin: 0 0 0.85rem;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .team-project-hero,
+  .team-project-details-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .team-project-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .team-project-field-wide {
+    grid-column: auto;
+  }
+}

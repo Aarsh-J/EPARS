@@ -133,7 +133,12 @@ export default function KanbanCard({
             )}
           </div>
 
-          <div className="card-assignee-wrap" title={assignee ? `${assignee.name}${assignee.role ? ` (${assignee.role})` : ""}` : "Unassigned"}>
+          <div
+            className="card-assignee-wrap"
+            title={assignee
+              ? `${assignee.name}${assignee.role ? ` (${assignee.role})` : ""} · Employee ID: ${assignee.employeeId}`
+              : "Unassigned"}
+          >
             {assignee ? (
               <div
                 className="card-assignee-avatar"

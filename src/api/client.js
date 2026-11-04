@@ -185,6 +185,13 @@ export function getProjectsWithOpenTasks(limit = 200) {
   return request(`/api/team_formation/projects?limit=${limit}`);
 }
 
+export function updateProjectDetails(projectId, updates) {
+  return request(`/api/team_formation/projects/${encodeURIComponent(projectId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
 export function recommendTeams(projectId, numTeams = 3, topM = 5, taskIds = null) {
   let url = `/api/team_formation/recommend/${encodeURIComponent(projectId)}?num_teams=${numTeams}&top_m=${topM}`;
   if (taskIds && taskIds.length > 0) {

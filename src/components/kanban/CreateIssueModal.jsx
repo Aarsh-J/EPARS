@@ -58,10 +58,6 @@ export default function CreateIssueModal({
       setError("Please enter a summary / title for the issue.");
       return;
     }
-    if (!selectedProjectIds.length && !includeOtherTasks) {
-      setError("Select a project or enable Other tasks before creating a task.");
-      return;
-    }
     if (!projectId) {
       setError("Choose a project for this task.");
       return;
@@ -143,13 +139,13 @@ export default function CreateIssueModal({
                 className="kanban-form-dropdown"
                 triggerClassName="jira-input"
                 options={[
-                  ...projects
-                    .filter((project) => selectedProjectIds.includes(project.project_id))
-                    .map((project) => ({
-                      value: project.project_id,
-                      label: project.project_name || project.project_id,
-                    })),
-                  ...(includeOtherTasks ? [{ value: NO_PROJECT, label: "Other tasks (no project)" }] : []),
+                  ...projects.map((project) => ({
+                    value: project.project_id,
+                    label: project.project_name
+                      ? `${project.project_name} (${project.project_id})`
+                      : project.project_id,
+                  })),
+                  { value: NO_PROJECT, label: "Other tasks (no project)" },
                 ]}
                 value={projectId}
                 onChange={(value) => {

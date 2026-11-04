@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  getKanbanEmployees,
   getProjectsWithOpenTasks,
+  updateProjectDetails,
   recommendTeams,
   confirmTeamFormation,
   checkTeamComposition,
@@ -32,6 +34,8 @@ export default function TeamFormation() {
   const [projectError, setProjectError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [employees, setEmployees] = useState([]);
+  const [employeeLoadError, setEmployeeLoadError] = useState("");
 
   // Recommendation Parameters
   const [numTeams, setNumTeams] = useState(3);
@@ -39,6 +43,7 @@ export default function TeamFormation() {
 
   // Selected Project & Results
   const [selectedProject, setSelectedProject] = useState(null);
+  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [recommendations, setRecommendations] = useState(null);
   const [activeTeamIndex, setActiveTeamIndex] = useState(0);
   const [loadingTeams, setLoadingTeams] = useState(false);
@@ -47,6 +52,10 @@ export default function TeamFormation() {
   const [confirming, setConfirming] = useState(false);
   const [confirmationError, setConfirmationError] = useState(null);
   const [confirmedTeam, setConfirmedTeam] = useState(null);
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectEditForm, setProjectEditForm] = useState(null);
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectEditError, setProjectEditError] = useState(null);
 
   // Ad-Hoc Custom Roster Checker
   const [adHocIdsInput, setAdHocIdsInput] = useState("");
@@ -77,6 +86,20 @@ export default function TeamFormation() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    getKanbanEmployees()
+      .then((rows) => {
+        if (active) setEmployees(rows);
+      })
+      .catch((error) => {
+        if (active) setEmployeeLoadError(error.message || "Unable to load employees.");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Filtered Projects
   const filteredProjects = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -95,15 +118,76 @@ export default function TeamFormation() {
   }, [projects, search, statusFilter]);
 
   // ── Form Team Handler ──────────────────────────────────────────────────────
+  const handleOpenProject = (project) => {
+    recommendationRequestId.current += 1;
+    setSelectedProject(project);
+    setAnalysisStarted(false);
+    setRecommendations(null);
+    setActiveTeamIndex(0);
+    setRecommendError(null);
+    setLoadingTeams(false);
+    setSelectedTeamLeadId("");
+    setConfirmationError(null);
+    setConfirmedTeam(null);
+    setEditingProject(false);
+    setProjectEditError(null);
+  };
+
+  const handleStartProjectEdit = () => {
+    setProjectEditForm({
+      project_name: selectedProject.project_name ?? "",
+      project_description: selectedProject.project_description ?? "",
+      current_status: selectedProject.current_status ?? "",
+      team_size: selectedProject.team_size ?? "",
+      priority: selectedProject.priority ?? "",
+      start_date: selectedProject.start_date?.slice(0, 10) ?? "",
+      planned_end_date: selectedProject.planned_end_date?.slice(0, 10) ?? "",
+      project_manager_id: selectedProject.project_manager_id ?? "",
+      required_skills: selectedProject.required_skills ?? "",
+    });
+    setProjectEditError(null);
+    setEditingProject(true);
+  };
+
+  const handleSaveProjectEdit = async (event) => {
+    event.preventDefault();
+    if (savingProject) return;
+    setSavingProject(true);
+    setProjectEditError(null);
+    try {
+      const updated = await updateProjectDetails(selectedProject.project_id, {
+        ...projectEditForm,
+        team_size: Number(projectEditForm.team_size),
+        start_date: projectEditForm.start_date || null,
+        planned_end_date: projectEditForm.planned_end_date || null,
+        project_manager_id: projectEditForm.project_manager_id || null,
+      });
+      setSelectedProject((current) => ({ ...current, ...updated }));
+      setProjects((current) => current.map((project) => (
+        project.project_id === updated.project_id
+          ? { ...project, ...updated }
+          : project
+      )));
+      setEditingProject(false);
+    } catch (error) {
+      setProjectEditError(error.message || "Unable to update project details.");
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
   const handleSelectProject = (project) => {
     const requestId = ++recommendationRequestId.current;
     setSelectedProject(project);
+    setAnalysisStarted(true);
     setRecommendations(null);
     setActiveTeamIndex(0);
     setRecommendError(null);
     setSelectedTeamLeadId("");
     setConfirmationError(null);
     setConfirmedTeam(null);
+    setEditingProject(false);
+    setProjectEditError(null);
     setLoadingTeams(true);
 
     recommendTeams(project.project_id, numTeams, topM)
@@ -181,17 +265,173 @@ export default function TeamFormation() {
   const handleReset = () => {
     recommendationRequestId.current += 1;
     setSelectedProject(null);
+    setAnalysisStarted(false);
     setRecommendations(null);
     setActiveTeamIndex(0);
     setRecommendError(null);
     setSelectedTeamLeadId("");
     setConfirmationError(null);
     setConfirmedTeam(null);
+    setEditingProject(false);
+    setProjectEditError(null);
     setLoadingTeams(false);
   };
 
   // ── Render: Team Results View ──────────────────────────────────────────────
   if (selectedProject) {
+    if (!analysisStarted) {
+      const projectFields = [
+          {
+            key: "project_name",
+            label: "Project name",
+            type: "text",
+            required: true,
+            maxLength: 200,
+            wide: true,
+          },
+          {
+            key: "project_description",
+            label: "Description",
+            type: "textarea",
+            wide: true,
+          },
+          { key: "current_status", label: "Status", type: "text", required: true, maxLength: 50 },
+          { key: "team_size", label: "Team size", type: "number", required: true },
+          { key: "priority", label: "Priority", type: "text", required: true, maxLength: 20 },
+          { key: "start_date", label: "Start date", type: "date" },
+          { key: "planned_end_date", label: "Planned end date", type: "date" },
+          { key: "project_manager_id", label: "Project manager", type: "manager" },
+          { key: "required_skills", label: "Required skills", type: "textarea", wide: true },
+          {
+            key: "open_task_count",
+            label: "Open tasks",
+            type: "readonly",
+            value: selectedProject.open_task_count ?? "Unavailable",
+          },
+      ];
+
+      const displayedProjectValue = (field) => {
+          if (field.key === "project_manager_id") {
+            return employees.find(
+              (employee) => employee.employee_id === selectedProject.project_manager_id
+            )?.full_name || selectedProject.project_manager_id || "Unassigned";
+          }
+          return selectedProject[field.key] ?? "Unavailable";
+      };
+
+      return (
+          <div id="team-formation-project-details">
+            <div className="team-project-hero">
+              <div>
+                <span className="badge-project-id">{selectedProject.project_id}</span>
+                <h2>{selectedProject.project_name || "Project details"}</h2>
+                <p>Review and update project information before running team analysis.</p>
+              </div>
+              <button type="button" className="btn-secondary" onClick={handleReset}>
+                ← Back to projects
+              </button>
+            </div>
+
+            <form className="card team-project-details" onSubmit={handleSaveProjectEdit}>
+              <div className="team-project-details-header">
+                <div>
+                  <h3 className="card-title">Project details</h3>
+                  <p>Project settings used to prepare a team recommendation.</p>
+                </div>
+                <div className="team-project-actions">
+                  {editingProject ? (
+                    <>
+                      <button type="button" className="btn-secondary" disabled={savingProject} onClick={() => {
+                        setEditingProject(false);
+                        setProjectEditError(null);
+                      }}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-analyse" disabled={savingProject}>
+                        {savingProject ? "Saving…" : "Save changes"}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn-secondary" onClick={handleStartProjectEdit}>
+                        Edit project
+                      </button>
+                      <button type="button" className="btn-analyse" onClick={() => handleSelectProject(selectedProject)}>
+                        Run Analysis
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {projectEditError && <p role="alert" className="team-project-edit-error">{projectEditError}</p>}
+              {employeeLoadError && editingProject && (
+                <p role="alert" className="team-project-edit-error">
+                  Unable to load project-manager choices: {employeeLoadError}
+                </p>
+              )}
+
+              <div className="team-project-fields">
+                {projectFields.map((field) => {
+                  const editable = editingProject && field.type !== "readonly";
+                  const inputProps = {
+                    className: "team-project-control",
+                    value: projectEditForm?.[field.key] ?? "",
+                    required: field.required,
+                    maxLength: field.maxLength,
+                    disabled: savingProject,
+                    onChange: (event) => setProjectEditForm((form) => ({
+                      ...form,
+                      [field.key]: event.target.value,
+                    })),
+                  };
+                  let control;
+                  if (field.type === "textarea") {
+                    control = <textarea {...inputProps} rows={field.key === "project_description" ? 3 : 2} />;
+                  } else if (field.type === "manager") {
+                    control = (
+                      <select
+                        {...inputProps}
+                        disabled={savingProject || Boolean(employeeLoadError)}
+                      >
+                        <option value="">Unassigned</option>
+                        {employees.map((employee) => (
+                          <option key={employee.employee_id} value={employee.employee_id}>
+                            {employee.full_name || employee.employee_id} ({employee.employee_id})
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  } else if (field.type === "number") {
+                    control = <input {...inputProps} type="number" min="1" step="1" />;
+                  } else if (field.type === "date") {
+                    control = <input {...inputProps} type="date" />;
+                  } else {
+                    control = <input {...inputProps} type="text" />;
+                  }
+
+                  return (
+                    <div
+                      className={`team-project-field${field.wide ? " team-project-field-wide" : ""}`}
+                      key={field.key}
+                    >
+                      <span className="team-project-field-label">{field.label}</span>
+                      {editable ? (
+                        control
+                      ) : (
+                        <div className="team-project-field-value">
+                          {field.value ?? displayedProjectValue(field)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </form>
+        </div>
+      );
+    }
+
     const activeTeam = recommendations ? recommendations[activeTeamIndex] : null;
 
     return (
@@ -635,7 +875,7 @@ export default function TeamFormation() {
                   <tr
                     className="emp-row"
                     key={p.project_id}
-                    onClick={() => handleSelectProject(p)}
+                    onClick={() => handleOpenProject(p)}
                     style={{ cursor: "pointer" }}
                   >
                     <td className="emp-name">{p.project_id}</td>
@@ -656,7 +896,7 @@ export default function TeamFormation() {
                         event.stopPropagation();
                         handleSelectProject(p);
                       }}>
-                        Form Team →
+                        Analyze →
                       </button>
                     </td>
                   </tr>
