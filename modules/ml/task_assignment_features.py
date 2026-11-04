@@ -247,7 +247,7 @@ def get_project_profile_row(project_id: str | None) -> dict:
 def get_open_tasks(limit: int = 200) -> list[dict]:
     """Tasks not yet completed/assigned — candidate pool for the selector UI."""
     sql = """
-        SELECT task_id, task_name, task_type, priority, required_role, due_date, status
+        SELECT task_id, task_name, task_type, priority, required_role, due_date, status, assigned_to
         FROM tasks
         WHERE status IS NULL OR status NOT IN ('Completed', 'Cancelled')
         ORDER BY due_date ASC NULLS LAST
