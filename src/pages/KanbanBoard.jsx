@@ -58,12 +58,14 @@ function mapBoardTask(task, employees) {
       ? {
           name: assignee.full_name,
           role: assignee.role,
+          employeeId: assignee.employee_id,
           avatar: initials(assignee.full_name),
         }
       : task.assigned_to
         ? {
             name: task.assignee_name || task.assigned_to,
             role: "",
+            employeeId: task.assigned_to,
             avatar: initials(task.assignee_name || task.assigned_to),
           }
         : null,
@@ -361,6 +363,14 @@ export default function KanbanBoard() {
   const handleCreateTask = async (taskInput) => {
     const response = await createKanbanTask(taskInput);
     if (!response.task) throw new Error("The server did not return the created task.");
+    if (taskInput.project_id) {
+      setSelectedProjectIds([taskInput.project_id]);
+      setIncludeOtherTasks(false);
+    } else {
+      setSelectedProjectIds([]);
+      setIncludeOtherTasks(true);
+    }
+    setPage(1);
     setBoardRefreshVersion((current) => current + 1);
   };
 
@@ -504,12 +514,12 @@ export default function KanbanBoard() {
     dateFilter !== "all" ||
     sortBy !== "due_date" ||
     sortOrder !== "asc";
-  const selectedProjectLabel = [
-    ...projects
-      .filter((project) => selectedProjectIds.includes(project.project_id))
-      .map((project) => project.project_name || project.project_id),
-    ...(includeOtherTasks ? ["Other tasks"] : []),
-  ].join(", ");
+  const projectSelectionSummary = [
+    selectedProjectIds.length > 0
+      ? `${selectedProjectIds.length} ${selectedProjectIds.length === 1 ? "project" : "projects"} selected`
+      : "",
+    includeOtherTasks ? "Other tasks" : "",
+  ].filter(Boolean).join(" + ");
   const projectOptions = projects.map((project) => ({
     value: project.project_id,
     label: project.project_name || project.project_id,
@@ -564,7 +574,7 @@ export default function KanbanBoard() {
         <div className="kanban-breadcrumbs">
           <Link to="/" className="crumb-link">Projects</Link>
           <span className="crumb-sep">/</span>
-          <span className="crumb-text active">{selectedProjectLabel || "Select board scope"}</span>
+          <span className="crumb-text active">Kanban Board</span>
         </div>
 
         <div className="kanban-header-main">
@@ -843,7 +853,7 @@ export default function KanbanBoard() {
         includeOtherTasks={includeOtherTasks}
         statusOptions={KANBAN_COLUMNS.map((column) => column.id)}
         priorityOptions={PRIORITY_OPTIONS}
-        projectLabel={selectedProjectLabel}
+        projectLabel={projectSelectionSummary}
         onClose={() => setIsCreateOpen(false)}
         onCreate={handleCreateTask}
       />

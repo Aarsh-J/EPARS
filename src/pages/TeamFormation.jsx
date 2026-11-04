@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  getKanbanEmployees,
   getProjectsWithOpenTasks,
+  updateProjectDetails,
   recommendTeams,
+  confirmTeamFormation,
   checkTeamComposition,
 } from "../api/client.js";
-import {
-  SAMPLE_PROJECTS,
-  SAMPLE_RECOMMENDATIONS,
-} from "../data/teamFormationData.js";
 
 function scoreClass(score) {
   if (score == null) return "score-avg";
@@ -18,20 +17,25 @@ function scoreClass(score) {
 }
 
 const DIMENSION_META = [
-  { key: "task_fit", label: "Task Fit", weight: "45%", desc: "Individual suitability for assigned tasks (from Model 3)" },
-  { key: "experience_balance", label: "Experience Balance", weight: "10%", desc: "Mix of junior, mid, and senior expertise" },
-  { key: "workload_balance", label: "Workload & Health", weight: "10%", desc: "Healthy overtime & low burnout risk score" },
-  { key: "past_overlap", label: "Historical Synergy", weight: "5%", desc: "Co-occurrence in past successful team projects" },
-  { key: "composition_typicality", label: "Composition Typicality", weight: "10%", desc: "Isolation Forest typicality score vs company history" },
+  { key: "task_fit", label: "Task Fit", desc: "Model 3 fit for the recommended task assignments" },
+  { key: "skill_coverage", label: "Skill Coverage", desc: "Coverage of required skills across assigned tasks" },
+  { key: "experience_balance", label: "Experience Balance", desc: "Experience distribution across the roster" },
+  { key: "workload_balance", label: "Workload Balance", desc: "Fairness of projected workload" },
+  { key: "historical_cooccurrence", label: "Historical Co-occurrence", desc: "Recorded roster co-occurrence; not evidence of successful collaboration" },
+  { key: "composition_typicality", label: "Composition Typicality", desc: "Advisory: resemblance to historical team compositions" },
 ];
 
 export default function TeamFormation() {
+  const recommendationRequestId = useRef(0);
+  const confirmationInFlight = useRef(false);
   // ── Project List State ─────────────────────────────────────────────────────
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [employees, setEmployees] = useState([]);
+  const [employeeLoadError, setEmployeeLoadError] = useState("");
 
   // Recommendation Parameters
   const [numTeams, setNumTeams] = useState(3);
@@ -39,10 +43,19 @@ export default function TeamFormation() {
 
   // Selected Project & Results
   const [selectedProject, setSelectedProject] = useState(null);
+  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [recommendations, setRecommendations] = useState(null);
   const [activeTeamIndex, setActiveTeamIndex] = useState(0);
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [recommendError, setRecommendError] = useState(null);
+  const [selectedTeamLeadId, setSelectedTeamLeadId] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [confirmationError, setConfirmationError] = useState(null);
+  const [confirmedTeam, setConfirmedTeam] = useState(null);
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectEditForm, setProjectEditForm] = useState(null);
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectEditError, setProjectEditError] = useState(null);
 
   // Ad-Hoc Custom Roster Checker
   const [adHocIdsInput, setAdHocIdsInput] = useState("");
@@ -52,20 +65,39 @@ export default function TeamFormation() {
 
   // ── Load Projects ──────────────────────────────────────────────────────────
   useEffect(() => {
+    let active = true;
     setLoadingProjects(true);
+    setProjectError(null);
     getProjectsWithOpenTasks()
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setProjects(data);
-        } else {
-          setProjects(SAMPLE_PROJECTS);
-        }
+        if (active) setProjects(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
-        console.warn("Backend unavailable, using sample projects:", err.message);
-        setProjects(SAMPLE_PROJECTS);
+        if (active) {
+          setProjects([]);
+          setProjectError(err.message || "Unable to load projects.");
+        }
       })
-      .finally(() => setLoadingProjects(false));
+      .finally(() => {
+        if (active) setLoadingProjects(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getKanbanEmployees()
+      .then((rows) => {
+        if (active) setEmployees(rows);
+      })
+      .catch((error) => {
+        if (active) setEmployeeLoadError(error.message || "Unable to load employees.");
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Filtered Projects
@@ -75,8 +107,7 @@ export default function TeamFormation() {
       const matchesSearch =
         !q ||
         (p.project_id && p.project_id.toLowerCase().includes(q)) ||
-        (p.project_name && p.project_name.toLowerCase().includes(q)) ||
-        (p.department && p.department.toLowerCase().includes(q));
+        (p.project_name && p.project_name.toLowerCase().includes(q));
 
       const matchesStatus =
         statusFilter === "all" ||
@@ -87,32 +118,123 @@ export default function TeamFormation() {
   }, [projects, search, statusFilter]);
 
   // ── Form Team Handler ──────────────────────────────────────────────────────
-  const handleSelectProject = (project) => {
+  const handleOpenProject = (project) => {
+    recommendationRequestId.current += 1;
     setSelectedProject(project);
+    setAnalysisStarted(false);
     setRecommendations(null);
     setActiveTeamIndex(0);
     setRecommendError(null);
+    setLoadingTeams(false);
+    setSelectedTeamLeadId("");
+    setConfirmationError(null);
+    setConfirmedTeam(null);
+    setEditingProject(false);
+    setProjectEditError(null);
+  };
+
+  const handleStartProjectEdit = () => {
+    setProjectEditForm({
+      project_name: selectedProject.project_name ?? "",
+      project_description: selectedProject.project_description ?? "",
+      current_status: selectedProject.current_status ?? "",
+      team_size: selectedProject.team_size ?? "",
+      priority: selectedProject.priority ?? "",
+      start_date: selectedProject.start_date?.slice(0, 10) ?? "",
+      planned_end_date: selectedProject.planned_end_date?.slice(0, 10) ?? "",
+      project_manager_id: selectedProject.project_manager_id ?? "",
+      required_skills: selectedProject.required_skills ?? "",
+    });
+    setProjectEditError(null);
+    setEditingProject(true);
+  };
+
+  const handleSaveProjectEdit = async (event) => {
+    event.preventDefault();
+    if (savingProject) return;
+    setSavingProject(true);
+    setProjectEditError(null);
+    try {
+      const updated = await updateProjectDetails(selectedProject.project_id, {
+        ...projectEditForm,
+        team_size: Number(projectEditForm.team_size),
+        start_date: projectEditForm.start_date || null,
+        planned_end_date: projectEditForm.planned_end_date || null,
+        project_manager_id: projectEditForm.project_manager_id || null,
+      });
+      setSelectedProject((current) => ({ ...current, ...updated }));
+      setProjects((current) => current.map((project) => (
+        project.project_id === updated.project_id
+          ? { ...project, ...updated }
+          : project
+      )));
+      setEditingProject(false);
+    } catch (error) {
+      setProjectEditError(error.message || "Unable to update project details.");
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleSelectProject = (project) => {
+    const requestId = ++recommendationRequestId.current;
+    setSelectedProject(project);
+    setAnalysisStarted(true);
+    setRecommendations(null);
+    setActiveTeamIndex(0);
+    setRecommendError(null);
+    setSelectedTeamLeadId("");
+    setConfirmationError(null);
+    setConfirmedTeam(null);
+    setEditingProject(false);
+    setProjectEditError(null);
     setLoadingTeams(true);
 
     recommendTeams(project.project_id, numTeams, topM)
       .then((res) => {
-        if (Array.isArray(res) && res.length > 0) {
+        if (requestId !== recommendationRequestId.current) return;
+        if (Array.isArray(res)) {
           setRecommendations(res);
         } else {
-          // Fallback to sample recommendations if DB has no candidates
-          setRecommendations(SAMPLE_RECOMMENDATIONS[project.project_id] || SAMPLE_RECOMMENDATIONS.PRJ026);
+          setRecommendations([]);
         }
       })
       .catch((err) => {
-        console.warn("Backend recommendation call failed, fallback to sample data:", err.message);
-        const fallback = SAMPLE_RECOMMENDATIONS[project.project_id] || SAMPLE_RECOMMENDATIONS.PRJ026;
-        if (fallback) {
-          setRecommendations(fallback);
-        } else {
+        if (requestId === recommendationRequestId.current) {
+          setRecommendations(null);
           setRecommendError(err.message || "Failed to generate team recommendations.");
         }
       })
-      .finally(() => setLoadingTeams(false));
+      .finally(() => {
+        if (requestId === recommendationRequestId.current) setLoadingTeams(false);
+      });
+  };
+
+  const handleConfirmTeam = async () => {
+    const activeTeam = recommendations?.[activeTeamIndex];
+    if (confirmationInFlight.current || !selectedTeamLeadId || !activeTeam) return;
+    confirmationInFlight.current = true;
+    setConfirming(true);
+    setConfirmationError(null);
+    setConfirmedTeam(null);
+    try {
+      const result = await confirmTeamFormation(
+        selectedProject.project_id,
+        activeTeam,
+        selectedTeamLeadId
+      );
+      setConfirmedTeam(result);
+    } catch (err) {
+      const message = err.message || "Team confirmation failed.";
+      setConfirmationError(
+        /\b409\b|conflict|changed|stale|active AI formation/i.test(message)
+          ? `${message} Refresh the recommendation before trying again.`
+          : message
+      );
+    } finally {
+      confirmationInFlight.current = false;
+      setConfirming(false);
+    }
   };
 
   // ── Ad-Hoc Roster Composition Checker ──────────────────────────────────────
@@ -141,14 +263,175 @@ export default function TeamFormation() {
   };
 
   const handleReset = () => {
+    recommendationRequestId.current += 1;
     setSelectedProject(null);
+    setAnalysisStarted(false);
     setRecommendations(null);
     setActiveTeamIndex(0);
     setRecommendError(null);
+    setSelectedTeamLeadId("");
+    setConfirmationError(null);
+    setConfirmedTeam(null);
+    setEditingProject(false);
+    setProjectEditError(null);
+    setLoadingTeams(false);
   };
 
   // ── Render: Team Results View ──────────────────────────────────────────────
   if (selectedProject) {
+    if (!analysisStarted) {
+      const projectFields = [
+          {
+            key: "project_name",
+            label: "Project name",
+            type: "text",
+            required: true,
+            maxLength: 200,
+            wide: true,
+          },
+          {
+            key: "project_description",
+            label: "Description",
+            type: "textarea",
+            wide: true,
+          },
+          { key: "current_status", label: "Status", type: "text", required: true, maxLength: 50 },
+          { key: "team_size", label: "Team size", type: "number", required: true },
+          { key: "priority", label: "Priority", type: "text", required: true, maxLength: 20 },
+          { key: "start_date", label: "Start date", type: "date" },
+          { key: "planned_end_date", label: "Planned end date", type: "date" },
+          { key: "project_manager_id", label: "Project manager", type: "manager" },
+          { key: "required_skills", label: "Required skills", type: "textarea", wide: true },
+          {
+            key: "open_task_count",
+            label: "Open tasks",
+            type: "readonly",
+            value: selectedProject.open_task_count ?? "Unavailable",
+          },
+      ];
+
+      const displayedProjectValue = (field) => {
+          if (field.key === "project_manager_id") {
+            return employees.find(
+              (employee) => employee.employee_id === selectedProject.project_manager_id
+            )?.full_name || selectedProject.project_manager_id || "Unassigned";
+          }
+          return selectedProject[field.key] ?? "Unavailable";
+      };
+
+      return (
+          <div id="team-formation-project-details">
+            <div className="team-project-hero">
+              <div>
+                <span className="badge-project-id">{selectedProject.project_id}</span>
+                <h2>{selectedProject.project_name || "Project details"}</h2>
+                <p>Review and update project information before running team analysis.</p>
+              </div>
+              <button type="button" className="btn-secondary" onClick={handleReset}>
+                ← Back to projects
+              </button>
+            </div>
+
+            <form className="card team-project-details" onSubmit={handleSaveProjectEdit}>
+              <div className="team-project-details-header">
+                <div>
+                  <h3 className="card-title">Project details</h3>
+                  <p>Project settings used to prepare a team recommendation.</p>
+                </div>
+                <div className="team-project-actions">
+                  {editingProject ? (
+                    <>
+                      <button type="button" className="btn-secondary" disabled={savingProject} onClick={() => {
+                        setEditingProject(false);
+                        setProjectEditError(null);
+                      }}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-analyse" disabled={savingProject}>
+                        {savingProject ? "Saving…" : "Save changes"}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn-secondary" onClick={handleStartProjectEdit}>
+                        Edit project
+                      </button>
+                      <button type="button" className="btn-analyse" onClick={() => handleSelectProject(selectedProject)}>
+                        Run Analysis
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {projectEditError && <p role="alert" className="team-project-edit-error">{projectEditError}</p>}
+              {employeeLoadError && editingProject && (
+                <p role="alert" className="team-project-edit-error">
+                  Unable to load project-manager choices: {employeeLoadError}
+                </p>
+              )}
+
+              <div className="team-project-fields">
+                {projectFields.map((field) => {
+                  const editable = editingProject && field.type !== "readonly";
+                  const inputProps = {
+                    className: "team-project-control",
+                    value: projectEditForm?.[field.key] ?? "",
+                    required: field.required,
+                    maxLength: field.maxLength,
+                    disabled: savingProject,
+                    onChange: (event) => setProjectEditForm((form) => ({
+                      ...form,
+                      [field.key]: event.target.value,
+                    })),
+                  };
+                  let control;
+                  if (field.type === "textarea") {
+                    control = <textarea {...inputProps} rows={field.key === "project_description" ? 3 : 2} />;
+                  } else if (field.type === "manager") {
+                    control = (
+                      <select
+                        {...inputProps}
+                        disabled={savingProject || Boolean(employeeLoadError)}
+                      >
+                        <option value="">Unassigned</option>
+                        {employees.map((employee) => (
+                          <option key={employee.employee_id} value={employee.employee_id}>
+                            {employee.full_name || employee.employee_id} ({employee.employee_id})
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  } else if (field.type === "number") {
+                    control = <input {...inputProps} type="number" min="1" step="1" />;
+                  } else if (field.type === "date") {
+                    control = <input {...inputProps} type="date" />;
+                  } else {
+                    control = <input {...inputProps} type="text" />;
+                  }
+
+                  return (
+                    <div
+                      className={`team-project-field${field.wide ? " team-project-field-wide" : ""}`}
+                      key={field.key}
+                    >
+                      <span className="team-project-field-label">{field.label}</span>
+                      {editable ? (
+                        control
+                      ) : (
+                        <div className="team-project-field-value">
+                          {field.value ?? displayedProjectValue(field)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </form>
+        </div>
+      );
+    }
+
     const activeTeam = recommendations ? recommendations[activeTeamIndex] : null;
 
     return (
@@ -161,14 +444,15 @@ export default function TeamFormation() {
               <h2>{selectedProject.project_name}</h2>
             </div>
             <p style={{ marginTop: "4px" }}>
-              Status: <strong>{selectedProject.current_status || "Active"}</strong> &middot;{" "}
-              Open Tasks to Fill: <strong>{selectedProject.open_task_count || "Multiple"}</strong>{" "}
+              Status: <strong>{selectedProject.current_status || "—"}</strong> &middot;{" "}
+              Team size: <strong>{selectedProject.team_size ?? "Unavailable"}</strong> &middot;{" "}
+              Open tasks: <strong>{selectedProject.open_task_count ?? "—"}</strong>{" "}
               {activeTeam?.search_mode && (
                 <span>&middot; Search Engine: <em>{activeTeam.search_mode}</em></span>
               )}
             </p>
           </div>
-          <button className="btn-secondary" onClick={handleReset}>
+          <button className="btn-secondary" onClick={handleReset} disabled={confirming}>
             ← Back to projects
           </button>
         </div>
@@ -185,6 +469,18 @@ export default function TeamFormation() {
         {!loadingTeams && recommendError && (
           <div className="card" style={{ borderColor: "#fca5a5", background: "#fef2f2" }}>
             <p style={{ color: "#991b1b" }}>{recommendError}</p>
+            <button className="btn-analyse" style={{ marginTop: "0.75rem" }} onClick={() => handleSelectProject(selectedProject)}>
+              Refresh recommendation
+            </button>
+          </div>
+        )}
+
+        {!loadingTeams && !recommendError && Array.isArray(recommendations) && recommendations.length === 0 && (
+          <div className="card">
+            <p>No recommendations are available for this project.</p>
+            <button className="btn-analyse" style={{ marginTop: "0.75rem" }} onClick={() => handleSelectProject(selectedProject)}>
+              Try again
+            </button>
           </div>
         )}
 
@@ -200,11 +496,16 @@ export default function TeamFormation() {
                     key={idx}
                     type="button"
                     className={`team-tab-btn ${activeTeamIndex === idx ? "active" : ""}`}
-                    onClick={() => setActiveTeamIndex(idx)}
+                    disabled={confirming || Boolean(confirmedTeam)}
+                    onClick={() => {
+                      setActiveTeamIndex(idx);
+                      setSelectedTeamLeadId("");
+                      setConfirmationError(null);
+                    }}
                   >
                     <span className="tab-title">Option {idx + 1}</span>
                     <span className={`tab-score-pill ${scoreClass(team.team_score)}`}>
-                      {team.team_score}
+                      {team.team_score ?? "—"}
                     </span>
                     {idx === 0 && <span className="tab-badge-best">Best Fit</span>}
                   </button>
@@ -220,7 +521,8 @@ export default function TeamFormation() {
                     Team Option {activeTeamIndex + 1} Overview
                   </h3>
                   <p style={{ color: "#64748b", fontSize: "13px" }}>
-                    Roster of {activeTeam.assignments?.length || activeTeam.n_tasks} members tailored for {selectedProject.project_name}
+                    Recommended roster: {activeTeam.team_member_ids?.length ?? "—"} of {activeTeam.team_size ?? selectedProject.team_size ?? "—"} members.
+                    {" "}Assignments cover {activeTeam.assignments?.length ?? 0} tasks.
                   </p>
                 </div>
 
@@ -230,7 +532,7 @@ export default function TeamFormation() {
                       Composite Team Score
                     </span>
                     <span className={`score-pill ${scoreClass(activeTeam.team_score)}`} style={{ fontSize: "16px", padding: "4px 12px" }}>
-                      {activeTeam.team_score} / 100
+                      {activeTeam.team_score != null ? `${activeTeam.team_score} / 100` : "Unavailable"}
                     </span>
                   </div>
                 </div>
@@ -241,9 +543,9 @@ export default function TeamFormation() {
                 <div className="composition-alert warning">
                   <div className="alert-icon">⚠️</div>
                   <div className="alert-content">
-                    <strong>Advisory Flag: Unusual Team Composition Profile</strong>
+                    <strong>Composition typicality advisory: unusual profile</strong>
                     <p>
-                      This team's cross-departmental or seniority distribution deviates significantly from historical team patterns.
+                      The Isolation Forest indicates this composition differs from the historical team compositions it was trained on. This is not a team-quality or compatibility prediction.
                     </p>
                     {activeTeam.composition_notes && (
                       <ul className="alert-notes-list">
@@ -254,92 +556,92 @@ export default function TeamFormation() {
                     )}
                   </div>
                 </div>
-              ) : (
+              ) : activeTeam.score_breakdown?.composition_typicality != null ? (
                 <div className="composition-alert success">
                   <div className="alert-icon">✓</div>
                   <div className="alert-content">
-                    <strong>Standard Composition Profile</strong>
+                    <strong>Composition typicality advisory</strong>
                     <p>
-                      The Isolation Forest model verified this roster matches established historical team formation patterns (Typicality score: {activeTeam.score_breakdown?.composition_typicality ?? 85}).
+                      The composition was not flagged as unusual relative to historical team compositions (score: {activeTeam.score_breakdown.composition_typicality}).
                     </p>
                   </div>
                 </div>
+              ) : (
+                <div className="composition-alert">
+                  Composition typicality is unavailable; this advisory does not predict team quality or compatibility.
+                </div>
               )}
 
-              {/* 5-Dimension Score Breakdown */}
+              {/* Six-dimension score breakdown */}
               <div style={{ marginTop: "1.25rem" }}>
-                <h4 className="detail-section-title">Team Performance Factors</h4>
+                <h4 className="detail-section-title">Score Breakdown</h4>
                 <div className="dimension-grid">
-                  {DIMENSION_META.map(({ key, label, weight, desc }) => {
+                  {DIMENSION_META.map(({ key, label, desc }) => {
                     const val = activeTeam.score_breakdown ? activeTeam.score_breakdown[key] : null;
+                    const weight = activeTeam.score_weights?.[key];
                     return (
                       <div className="dimension-card" key={key}>
                         <div className="dimension-header">
                           <span className="dimension-name">{label}</span>
-                          <span className="dimension-weight">wt. {weight}</span>
+                          <span className="dimension-weight">
+                            {typeof weight === "number" ? `wt. ${(weight * 100).toFixed(0)}%` : "Weight unavailable"}
+                          </span>
                         </div>
                         <div className="dimension-score-row">
                           <span className={`dimension-val ${scoreClass(val)}`}>
                             {val != null ? val : "—"}
                           </span>
                         </div>
-                        <div className="dimension-bar-track">
-                          <div
-                            className="dimension-bar-fill"
-                            style={{
-                              width: `${Math.min(100, Math.max(0, val || 0))}%`,
-                              backgroundColor: val >= 85 ? "#10b981" : val >= 70 ? "#3b82f6" : val >= 50 ? "#f59e0b" : "#ef4444",
-                            }}
-                          />
-                        </div>
+                        {val != null && <div className="dimension-bar-track">
+                          <div className="dimension-bar-fill" style={{
+                            width: `${Math.min(100, Math.max(0, val))}%`,
+                            backgroundColor: val >= 85 ? "#10b981" : val >= 70 ? "#3b82f6" : val >= 50 ? "#f59e0b" : "#ef4444",
+                          }} />
+                        </div>}
                         <p className="dimension-desc">{desc}</p>
                       </div>
                     );
                   })}
                 </div>
+                {activeTeam.score_unavailable_components?.length > 0 && (
+                  <p role="status" style={{ color: "#64748b", fontSize: "13px", marginTop: "0.75rem" }}>
+                    Scores unavailable: {activeTeam.score_unavailable_components.join(", ")}. The final score is not calculated when a component is unavailable.
+                  </p>
+                )}
+              </div>
+
+              <div style={{ marginTop: "1.5rem" }}>
+                <h4 className="detail-section-title">Recommended Roster</h4>
+                {Array.isArray(activeTeam.team_member_ids) && activeTeam.team_member_ids.length > 0 ? (
+                  <ul>
+                    {activeTeam.team_member_ids.map((employeeId) => (
+                      <li key={employeeId}>{employeeId}</li>
+                    ))}
+                  </ul>
+                ) : <p>Roster IDs are unavailable in this recommendation.</p>}
               </div>
 
               {/* Task-to-Employee Assignment Roster */}
               <div style={{ marginTop: "1.5rem" }}>
-                <h4 className="detail-section-title">Assigned Member Roster (1 Employee per Task)</h4>
+                <h4 className="detail-section-title">Task Assignments</h4>
                 <div className="employee-table-wrap">
                   <table className="employee-table">
                     <thead>
                       <tr>
-                        <th>Task</th>
-                        <th>Assigned Member</th>
-                        <th>Role &amp; Seniority</th>
-                        <th>Department</th>
+                        <th>Task ID</th>
+                        <th>Assigned Employee ID</th>
+                        <th>Estimated Hours</th>
+                        <th>Required Skills</th>
                         <th>Task Fit Score</th>
                       </tr>
                     </thead>
                     <tbody>
                       {activeTeam.assignments?.map((item) => (
                         <tr key={item.task_id}>
-                          <td>
-                            <strong>{item.task_id}</strong>
-                            {item.task_name && (
-                              <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                                {item.task_name}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <div className="member-avatar">
-                                {(item.employee_name || item.employee_id).substring(0, 2).toUpperCase()}
-                              </div>
-                              <div>
-                                <strong>{item.employee_name || item.employee_id}</strong>
-                                <div style={{ fontSize: "11px", color: "#64748b" }}>{item.employee_id}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <span>{item.role || "Developer"}</span> &middot;{" "}
-                            <span className="seniority-tag">{item.seniority || "Mid"}</span>
-                          </td>
-                          <td>{item.department || "Engineering"}</td>
+                          <td><strong>{item.task_id}</strong></td>
+                          <td>{item.employee_id || "Unavailable"}</td>
+                          <td>{item.task_estimated_hours ?? "Unavailable"}</td>
+                          <td>{item.task_required_skills ?? "Unavailable"}</td>
                           <td>
                             <span className={`score-pill ${scoreClass(item.task_composite_score)}`}>
                               {item.task_composite_score ?? "—"}
@@ -351,6 +653,56 @@ export default function TeamFormation() {
                   </table>
                 </div>
               </div>
+
+              <div className="card" style={{ marginTop: "1.5rem" }}>
+                <h4 className="detail-section-title">Manager Confirmation</h4>
+                {confirmedTeam ? (
+                  <p role="status" style={{ color: "#166534" }}>
+                    Team formation {confirmedTeam.team_id} confirmed for project {confirmedTeam.project_id}.
+                  </p>
+                ) : (
+                  <>
+                    <label htmlFor="team-lead-select">Select team lead from the recommended roster</label>
+                    <select
+                      id="team-lead-select"
+                      className="filter-select"
+                      value={selectedTeamLeadId}
+                      disabled={confirming}
+                      onChange={(event) => setSelectedTeamLeadId(event.target.value)}
+                    >
+                      <option value="">Select a team lead</option>
+                      {(activeTeam.team_member_ids || []).map((employeeId) => (
+                        <option key={employeeId} value={employeeId}>{employeeId}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn-analyse"
+                      style={{ marginLeft: "0.75rem" }}
+                      disabled={confirming || !selectedTeamLeadId}
+                      onClick={handleConfirmTeam}
+                    >
+                      {confirming ? "Confirming…" : "Confirm team formation"}
+                    </button>
+                  </>
+                )}
+                {confirmationError && (
+                  <p role="alert" style={{ color: "#991b1b", marginTop: "0.75rem" }}>
+                    {confirmationError}
+                    {/\b409\b|conflict|changed|stale|active AI formation/i.test(confirmationError) && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ marginLeft: "0.75rem" }}
+                        disabled={confirming}
+                        onClick={() => handleSelectProject(selectedProject)}
+                      >
+                        Refresh recommendation
+                      </button>
+                    )}
+                  </p>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -359,7 +711,7 @@ export default function TeamFormation() {
         <div className="card" style={{ marginTop: "1.5rem" }}>
           <h3 className="card-title">Test a Custom Team Roster</h3>
           <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "1rem" }}>
-            Check any custom set of employees against the Isolation Forest composition model to evaluate typicality and identify friction risks.
+            Check a roster's resemblance to historical team compositions. This is an advisory, not a prediction of team quality or compatibility.
           </p>
 
           <form onSubmit={handleCheckAdHoc} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -503,8 +855,8 @@ export default function TeamFormation() {
               <tr>
                 <th>Project ID</th>
                 <th>Project Name</th>
-                <th>Department</th>
                 <th>Status</th>
+                <th>Team Size</th>
                 <th>Open Tasks</th>
                 <th></th>
               </tr>
@@ -513,7 +865,9 @@ export default function TeamFormation() {
               {filteredProjects.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "#94a3b8" }}>
-                    No projects found matching current filters.
+                    {projects.length === 0
+                      ? "No projects with open tasks are available."
+                      : "No projects found matching current filters."}
                   </td>
                 </tr>
               ) : (
@@ -521,30 +875,28 @@ export default function TeamFormation() {
                   <tr
                     className="emp-row"
                     key={p.project_id}
-                    onClick={() => handleSelectProject(p)}
+                    onClick={() => handleOpenProject(p)}
                     style={{ cursor: "pointer" }}
                   >
                     <td className="emp-name">{p.project_id}</td>
                     <td>
                       <strong>{p.project_name}</strong>
-                      {p.description && (
-                        <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                          {p.description}
-                        </div>
-                      )}
-                    </td>
-                    <td>{p.department || "Engineering"}</td>
-                    <td>
-                      <span className={`status-pill status-${(p.current_status || "active").toLowerCase()}`}>
-                        {p.current_status || "Active"}
-                      </span>
                     </td>
                     <td>
-                      <span className="open-tasks-count">{p.open_task_count || "—"} open tasks</span>
+                      {p.current_status
+                        ? <span className={`status-pill status-${p.current_status.toLowerCase()}`}>{p.current_status}</span>
+                        : "Unavailable"}
+                    </td>
+                    <td>{p.team_size ?? "Unavailable"}</td>
+                    <td>
+                      <span className="open-tasks-count">{p.open_task_count ?? "—"} open tasks</span>
                     </td>
                     <td>
-                      <button className="btn-analyse" onClick={() => handleSelectProject(p)}>
-                        Form Team →
+                      <button className="btn-analyse" onClick={(event) => {
+                        event.stopPropagation();
+                        handleSelectProject(p);
+                      }}>
+                        Analyze →
                       </button>
                     </td>
                   </tr>

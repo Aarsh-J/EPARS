@@ -258,6 +258,8 @@ export default function IssueDetailModal({
                   <div
                     className="card-assignee-avatar"
                     style={{ backgroundColor: "#64748b" }}
+                    title={`${assignee.full_name || assignee.employee_id} · Employee ID: ${assignee.employee_id}`}
+                    aria-label={`Employee ID: ${assignee.employee_id}`}
                   >
                     {assigneeInitials}
                   </div>
@@ -275,7 +277,7 @@ export default function IssueDetailModal({
                     { value: "", label: "Unassigned" },
                     ...employees.map((employee) => ({
                       value: employee.employee_id,
-                      label: `${employee.full_name}${employee.role ? ` (${employee.role})` : ""}`,
+                      label: `${employee.full_name || employee.employee_id}${employee.role ? ` (${employee.role})` : ""} · ${employee.employee_id}`,
                     })),
                   ]}
                   value={assigneeId}

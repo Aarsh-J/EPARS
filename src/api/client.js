@@ -7,7 +7,10 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || body.error || `Request failed: ${res.status}`);
+    const detail = body.detail || body.error;
+    throw new Error(
+      typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `Request failed: ${res.status}`
+    );
   }
   return res.json();
 }
@@ -182,12 +185,29 @@ export function getProjectsWithOpenTasks(limit = 200) {
   return request(`/api/team_formation/projects?limit=${limit}`);
 }
 
+export function updateProjectDetails(projectId, updates) {
+  return request(`/api/team_formation/projects/${encodeURIComponent(projectId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
 export function recommendTeams(projectId, numTeams = 3, topM = 5, taskIds = null) {
   let url = `/api/team_formation/recommend/${encodeURIComponent(projectId)}?num_teams=${numTeams}&top_m=${topM}`;
   if (taskIds && taskIds.length > 0) {
     url += `&task_ids=${encodeURIComponent(taskIds.join(","))}`;
   }
   return request(url);
+}
+
+export function confirmTeamFormation(projectId, recommendation, teamLeadId) {
+  return request(`/api/team_formation/confirm/${encodeURIComponent(projectId)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      recommendation,
+      team_lead_id: teamLeadId,
+    }),
+  });
 }
 
 export function checkTeamComposition(employeeIds) {
