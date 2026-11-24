@@ -12,6 +12,16 @@ const MODULES = [
     path: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   },
   {
+    title: "Kanban Board",
+    description:
+      "Track task progression across To Do, In Progress, In Review, and Done with Jira-like drag-and-drop.",
+    to: "/kanban",
+    active: true,
+    iconBg: "#e0e7ff",
+    iconStroke: "#4338ca",
+    path: "M3 4a1 1 0 011-1h3a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm6 0a1 1 0 011-1h3a1 1 0 011 1v8a1 1 0 01-1 1H10a1 1 0 01-1-1V4zm6 0a1 1 0 011-1h3a1 1 0 011 1v11a1 1 0 01-1 1h-3a1 1 0 01-1-1V4z",
+  },
+  {
     title: "Task Assignment",
     description:
       "Optimise employee-task matching using skill alignment, availability, and workload compatibility.",
@@ -35,10 +45,21 @@ const MODULES = [
     title: "Team Formation",
     description:
       "Recommend optimal team compositions based on skills, experience balance, and collaboration history.",
-    active: false,
-    iconBg: "#f3f4f6",
-    iconStroke: "#9ca3af",
+    to: "/team-formation",
+    active: true,
+    iconBg: "#fef3c7",
+    iconStroke: "#d97706",
     path: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
+  },
+  {
+    title: "Forms",
+    description:
+      "Open the forms used to record task progress, reviews, assignment outcomes and feedback.",
+    to: "/forms",
+    active: true,
+    iconBg: "#dcfce7",
+    iconStroke: "#15803d",
+    path: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
   },
 ];
 

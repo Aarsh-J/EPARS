@@ -4,12 +4,18 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Performance from "./pages/Performance.jsx";
 import Burnout from "./pages/Burnout.jsx";
 import TaskAssignment from "./pages/TaskAssignment.jsx";
+import KanbanBoard from "./pages/KanbanBoard.jsx";
+import TeamFormation from "./pages/TeamFormation.jsx";
+import Forms from "./pages/Forms.jsx";
 
 const PAGE_TITLES = {
   "/": "Dashboard",
   "/performance": "Performance Evaluation",
   "/burnout": "Workload & Risk",
   "/task-assignment": "Task Assignment",
+  "/kanban": "Kanban Board",
+  "/team-formation": "Team Formation",
+  "/forms": "Forms",
 };
 
 export default function App() {
@@ -23,6 +29,9 @@ export default function App() {
         <Route path="/performance" element={<Performance />} />
         <Route path="/burnout" element={<Burnout />} />
         <Route path="/task-assignment" element={<TaskAssignment />} />
+        <Route path="/kanban" element={<KanbanBoard />} />
+        <Route path="/team-formation" element={<TeamFormation />} />
+        <Route path="/forms" element={<Forms />} />
       </Routes>
     </Layout>
   );
