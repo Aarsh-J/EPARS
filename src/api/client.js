@@ -1,18 +1,57 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-async function request(path, options = {}) {
+function readCookie(name) {
+  const prefix = `${name}=`;
+  const cookie = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : "";
+}
+
+export async function request(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const method = (options.method || "GET").toUpperCase();
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const csrfToken = readCookie("epars_csrf");
+    if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    credentials: "include",
+    headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail || body.error;
-    throw new Error(
+    const error = new Error(
       typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `Request failed: ${res.status}`
     );
+    error.status = res.status;
+    if (res.status === 401 && !path.endsWith("/auth/login")) {
+      window.dispatchEvent(new Event("epars:unauthorized"));
+    }
+    throw error;
   }
   return res.json();
+}
+
+export function login(username, password) {
+  return request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function logout() {
+  return request("/api/auth/logout", { method: "POST" });
+}
+
+export function getCurrentUser() {
+  return request("/api/auth/me");
 }
 
 export function getEmployees() {

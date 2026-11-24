@@ -1,7 +1,7 @@
 import Sidebar from "./Sidebar.jsx";
 import ChatWidget from "./ChatWidget.jsx";
 
-export default function Layout({ title = "Dashboard", children }) {
+export default function Layout({ title = "Dashboard", onLogout, logoutError, children }) {
   return (
     <>
       <Sidebar />
@@ -12,6 +12,10 @@ export default function Layout({ title = "Dashboard", children }) {
             <span className="topbar-label">
               Employee Performance Analyser &amp; Recommendation System
             </span>
+            {logoutError && <span className="logout-error" role="alert">{logoutError}</span>}
+            <button className="signout-button" type="button" onClick={onLogout}>
+              Sign out
+            </button>
           </div>
         </header>
         <div className="content">{children}</div>
