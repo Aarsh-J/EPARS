@@ -30,9 +30,6 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - safety fallback for non-legacy imports
     from epars_agent.agent.db import get_connection
 
-from ..ml.task_assignment_features import get_open_tasks
-from ..ml.task_assignment_predict import recommend_top_n, score_pair
-
 router = APIRouter(prefix="/task_assignment", tags=["task_assignment"])
 
 TaskStatus = Literal["Not Started", "In Progress", "In Review", "Blocked", "Completed"]
@@ -327,6 +324,8 @@ def _task_reference_types(cur, task_id):
 def list_tasks():
     """Open tasks for the existing task-assignment selector."""
     try:
+        from ..ml.task_assignment_features import get_open_tasks
+
         rows = get_open_tasks()
         for row in rows:
             if row.get("due_date"):
@@ -340,6 +339,8 @@ def list_tasks():
 def score(task_id: str, employee_id: str):
     """Score one task/employee pair."""
     try:
+        from ..ml.task_assignment_predict import score_pair
+
         return score_pair(task_id, employee_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -351,6 +352,8 @@ def score(task_id: str, employee_id: str):
 def recommend(task_id: str, top_n: int = Query(3, ge=1, le=50)):
     """Return the top employee recommendations for a task."""
     try:
+        from ..ml.task_assignment_predict import recommend_top_n
+
         return recommend_top_n(task_id, top_n=top_n)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

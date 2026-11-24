@@ -53,7 +53,7 @@ from tools import (
 )
 from rag_query import format_policy_context
 
-from .llm_client import invoke_json, llm
+from .llm_client import get_llm, invoke_json
 from .predict import predict_burnout
 
 RESCHEDULE_LOOKAHEAD_DAYS = 14
@@ -74,7 +74,7 @@ def _generate_burnout_justification(employee_profile: dict, prediction: dict) ->
         ),
         "policy_citation": None,
     }
-    if llm is None:
+    if get_llm() is None:
         return fallback
 
     policy_context = format_policy_context(
@@ -123,7 +123,7 @@ Respond with ONLY a JSON object, no other text, no markdown fences:
 # ── Per-task reassignment/reschedule decision (ported from burnout_monitor.py) ──
 
 def decide_action_for_task(employee: dict, task: dict, candidates: list) -> dict:
-    if llm is None:
+    if get_llm() is None:
         return {"action": "none", "reasoning": "LLM not available."}
 
     today = datetime.now().strftime("%Y-%m-%d")

@@ -1,24 +1,42 @@
-"""
-modules/ml/llm_client.py
-=============================
-Single shared ChatGroq client for direct (non-agent, no tool-loop) LLM calls
-used by justification.py and reassignment.py. Same model/config as
-src/epars_agent/agent/burnout_monitor.py's module-level instantiation.
-"""
+"""Thread-safe lazy ChatGroq client for direct, non-agent LLM calls."""
 
 import json
+import logging
 import os
+from threading import Lock
+from typing import Any
 
-try:
-    from langchain_groq import ChatGroq
-    llm = ChatGroq(
-        model="openai/gpt-oss-120b",
-        temperature=0,
-        api_key=os.getenv("GROQ_API_KEY"),
-    )
-except ImportError:
-    llm = None
-    print("[WARN] langchain_groq not installed. Run: pip install langchain-groq")
+_LOGGER = logging.getLogger(__name__)
+_CLIENT_LOCK = Lock()
+_CLIENT_UNINITIALIZED = object()
+_client: Any = _CLIENT_UNINITIALIZED
+
+
+def get_llm() -> Any | None:
+    """Create the shared Groq client only when an LLM-backed operation is used."""
+    global _client
+    with _CLIENT_LOCK:
+        if _client is not _CLIENT_UNINITIALIZED:
+            return _client
+
+        if not os.getenv("GROQ_API_KEY"):
+            _LOGGER.warning("GROQ_API_KEY is not configured; LLM explanations are unavailable.")
+            _client = None
+            return None
+
+        try:
+            from langchain_groq import ChatGroq
+        except ImportError:
+            _LOGGER.warning("langchain_groq is not installed; LLM explanations are unavailable.")
+            _client = None
+            return None
+
+        _client = ChatGroq(
+            model="openai/gpt-oss-120b",
+            temperature=0,
+            api_key=os.getenv("GROQ_API_KEY"),
+        )
+        return _client
 
 
 def invoke_json(prompt: str) -> dict | None:
@@ -27,10 +45,11 @@ def invoke_json(prompt: str) -> dict | None:
     Returns the parsed dict, or None if the LLM is unavailable or the
     response can't be parsed (never raises).
     """
-    if llm is None:
+    client = get_llm()
+    if client is None:
         return None
     try:
-        response = llm.invoke(prompt)
+        response = client.invoke(prompt)
         text = response.content.strip().replace("```json", "").replace("```", "").strip()
         return json.loads(text)
     except Exception:

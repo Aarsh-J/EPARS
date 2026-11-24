@@ -16,7 +16,7 @@ import json
 
 from rag_query import format_policy_context
 
-from .llm_client import invoke_json, llm
+from .llm_client import get_llm, invoke_json
 
 
 def generate_justification(
@@ -41,7 +41,7 @@ def generate_justification(
         "policy_citation": None,
     }
 
-    if llm is None:
+    if get_llm() is None:
         return fallback
 
     # A static query, not one embedding the specific score — sentence embeddings

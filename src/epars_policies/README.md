@@ -35,6 +35,13 @@ python ingest_policies.py
 Re-run `ingest_policies.py` any time a doc under `docs/` changes — it's idempotent
 (upserts by chunk ID, removes stale/deleted chunks), so it's always safe to re-run.
 
+The Docker API image downloads a pinned FP32 ONNX copy of the same
+`all-MiniLM-L6-v2` encoder during its builder stage and uses ONNX Runtime for
+queries. It applies the model's existing 256-token truncation, mean pooling,
+and L2 normalization. This avoids importing PyTorch in the API process. Local
+non-Docker use continues to use Sentence Transformers when no ONNX model
+directory is configured.
+
 ## Usage in your Agent
 
 ```python

@@ -18,6 +18,7 @@ import math
 import sys
 import time
 from pathlib import Path
+from threading import Lock
 
 import numpy as np
 
@@ -47,10 +48,12 @@ _EMPLOYEE_SQL_COLS = [
 # a short TTL cache.
 _PAIRS_TTL_SECONDS = 600
 _pairs_cache: dict = {"at": 0.0, "pairs": None}
+_pairs_cache_lock = Lock()
 
 
 def clear_caches() -> None:
-    _pairs_cache.update({"at": 0.0, "pairs": None})
+    with _pairs_cache_lock:
+        _pairs_cache.update({"at": 0.0, "pairs": None})
 
 
 def _split_skills(*values) -> set:
@@ -124,24 +127,25 @@ def load_historical_pairs() -> set:
     This records historical co-occurrence only; it does not establish successful
     collaboration or any team outcome.
     """
-    now = time.time()
-    if _pairs_cache["pairs"] is not None and now - _pairs_cache["at"] < _PAIRS_TTL_SECONDS:
-        return _pairs_cache["pairs"]
+    with _pairs_cache_lock:
+        now = time.time()
+        if _pairs_cache["pairs"] is not None and now - _pairs_cache["at"] < _PAIRS_TTL_SECONDS:
+            return _pairs_cache["pairs"]
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT member_ids, team_lead_id FROM team_formations")
-            rows = cur.fetchall()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT member_ids, team_lead_id FROM team_formations")
+                rows = cur.fetchall()
 
-    pairs = set()
-    for r in rows:
-        members = {m.strip() for m in str(r.get("member_ids") or "").split(",") if m.strip()}
-        if r.get("team_lead_id"):
-            members.add(r["team_lead_id"])
-        pairs.update(itertools.combinations(sorted(members), 2))
+        pairs = set()
+        for r in rows:
+            members = {m.strip() for m in str(r.get("member_ids") or "").split(",") if m.strip()}
+            if r.get("team_lead_id"):
+                members.add(r["team_lead_id"])
+            pairs.update(itertools.combinations(sorted(members), 2))
 
-    _pairs_cache.update({"at": now, "pairs": pairs})
-    return pairs
+        _pairs_cache.update({"at": now, "pairs": pairs})
+        return pairs
 
 
 def get_project_tasks(project_id: str, task_ids: list | None = None, include_closed: bool = False) -> list:

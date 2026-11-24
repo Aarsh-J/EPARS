@@ -8,8 +8,6 @@ unchanged (the exact function src/epars_agent/test_agent.py already calls).
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from epars_agent import run_agent
-
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 
@@ -20,6 +18,8 @@ class QueryRequest(BaseModel):
 @router.post("/query")
 def query_agent(body: QueryRequest):
     try:
+        from epars_agent import run_agent
+
         return run_agent(body.query)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

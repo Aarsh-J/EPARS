@@ -26,6 +26,10 @@ pip install -r requirements.txt
 uvicorn modules.main:app --reload --port 8000
 ```
 
+The root requirements are for local development and policy ingestion. The
+Docker image installs the smaller `requirements-runtime.txt` set and includes
+the pinned ONNX policy encoder used by the API.
+
 Or via Docker (see [`Dockerfile`](Dockerfile) — secrets are passed at runtime, not baked in):
 ```bash
 docker build -t epars-backend .
