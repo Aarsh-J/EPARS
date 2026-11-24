@@ -78,6 +78,7 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY src/ src/
 COPY modules/ modules/
+COPY ml_models/ ml_models/
 
 RUN chown -R app:app /app
 USER app

@@ -8,6 +8,42 @@ change** until the branches are merged.
 Base URL: `http://localhost:8000` in dev (`VITE_API_URL` in the frontend's `.env`), the
 deployed Render URL in production. All routes are prefixed `/api`.
 
+## Authentication
+
+Every API route requires the administrator session, except `POST /api/auth/login`,
+`POST /api/auth/logout`, and the public `GET /health` health check. API documentation
+endpoints are protected as well. The backend sets a short-lived HttpOnly session cookie
+and a CSRF cookie; state-changing requests must echo the CSRF cookie in the
+`X-CSRF-Token` header. The frontend API client handles both cookies.
+
+Configure `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, and `SESSION_SECRET_KEY` in the
+backend environment. Create the password hash from the backend directory with:
+
+```powershell
+python -c "import getpass; from modules.auth import hash_password; print(hash_password(getpass.getpass('Admin password: ')))"
+```
+
+Generate `SESSION_SECRET_KEY` with
+`python -c "import secrets; print(secrets.token_urlsafe(48))"` and set
+`AUTH_COOKIE_SECURE=true` when serving the API over HTTPS. If the frontend and API are
+hosted on different sites, set `AUTH_COOKIE_SAMESITE=none` (which requires Secure cookies).
+The initial environment-backed provider has one admin; `AuthProvider` is the extension
+point for a future user store.
+
+### `POST /api/auth/login`
+
+Request: `{ "username": "admin", "password": "<admin password>" }`.
+Returns the authenticated user and sets session/CSRF cookies. Invalid credentials return
+`401`; missing or invalid auth configuration returns `503`.
+
+### `POST /api/auth/logout`
+
+Clears the session and CSRF cookies.
+
+### `GET /api/auth/me`
+
+Returns the authenticated user's `id`, `username`, and `role`.
+
 Server: `modules/main.py` (FastAPI). Every route is a thin wrapper — it calls straight into
 functions in `src/epars_agent` / `src/epars_policies` and does not reimplement business
 logic. The function(s) backing each route are named below so you know where to look/change
