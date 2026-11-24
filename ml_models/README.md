@@ -1,5 +1,9 @@
 # ml_models/
 
+The API loads each model on first use and retains one thread-safe process-local
+copy. It does not deserialize model files at startup. The explicit
+`preload_models()` helper remains available for operator-driven warm-up only.
+
 Three trained models, wired into the API by `modules/ml/`. The first two were refreshed on
 2026-09-03 from newer versions developed on other branches — see
 `../docs/ML_MODELS_OVERVIEW.md` for the full model-development writeup (algorithms

@@ -31,8 +31,6 @@ except ModuleNotFoundError:
 
 from tools import get_employee_profile, _to_list
 
-from ..ml.reassignment import assess_and_recommend, execute_recommendation
-
 router = APIRouter(prefix="/burnout", tags=["burnout"])
 
 _CLASS_COLOR = {
@@ -159,6 +157,8 @@ def analyse_employee(body: AnalyseRequest):
     base = _stored_burnout(body.employee_id)
 
     try:
+        from ..ml.reassignment import assess_and_recommend
+
         result = assess_and_recommend(body.employee_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -232,6 +232,8 @@ def decide_recommendation(recommendation_id: str, body: RecommendationDecision):
     execution_result = None
     if body.decision == "confirmed":
         try:
+            from ..ml.reassignment import execute_recommendation
+
             execution_result = execute_recommendation(recommendation_id)
         except Exception as e:
             execution_result = {"success": False, "error": str(e)}

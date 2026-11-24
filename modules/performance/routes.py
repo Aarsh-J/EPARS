@@ -40,8 +40,6 @@ except ModuleNotFoundError:
 from tools import get_employee_profile, get_employee_ml_scores, _to_list
 
 from ..ml.performance_features import get_score_signals
-from ..ml.predict import predict_performance
-from ..ml.justification import generate_justification
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
@@ -212,6 +210,9 @@ def analyse_employee(body: AnalyseRequest):
     base = _employee_detail_base(body.employee_id)
 
     try:
+        from ..ml.predict import predict_performance
+        from ..ml.justification import generate_justification
+
         live = predict_performance(body.employee_id, body.review_id)
         signals = get_score_signals(body.employee_id, body.review_id)
     except Exception as e:

@@ -18,12 +18,6 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - non-legacy import path
     from epars_agent.agent.db import get_connection
 
-from ..ml.team_formation_predict import (
-    InfeasibleTeamFormationError,
-    _candidate_lists,
-)
-from ..task_assignment.routes import _apply_assignment
-
 
 class ConfirmationError(ValueError):
     """A manager-confirmation request is invalid or stale."""
@@ -44,6 +38,18 @@ class DuplicateConfirmationError(ConfirmationError):
             "This project already has an active AI formation.",
             409,
         )
+
+
+def _candidate_lists(tasks: list[dict], candidate_limit: int) -> dict:
+    from ..ml.team_formation_predict import _candidate_lists as build_candidate_lists
+
+    return build_candidate_lists(tasks, candidate_limit)
+
+
+def _apply_assignment(cur, task_id, employee_id, assignment_method="Manual"):
+    from ..task_assignment.routes import _apply_assignment as apply_assignment
+
+    return apply_assignment(cur, task_id, employee_id, assignment_method)
 
 
 def _validate_recommendation_shape(
@@ -229,6 +235,8 @@ def confirm_team_formation(
                 )
 
             try:
+                from ..ml.team_formation_predict import InfeasibleTeamFormationError
+
                 candidates_per_task = _candidate_lists(
                     [{"task_id": task_id} for task_id in sorted(current_task_ids)],
                     candidate_limit,

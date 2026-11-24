@@ -9,6 +9,7 @@ running on Groq's openai/gpt-oss-120b.
 import os
 import sys
 import json
+from threading import Lock
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -375,6 +376,7 @@ ALWAYS:
 
 # ── Build agent (singleton) ────────────────────────────────────────────────────
 _agent = None
+_agent_lock = Lock()
 
 def build_agent():
     api_key = os.getenv("GROQ_API_KEY")
@@ -408,9 +410,11 @@ def run_agent(query: str) -> dict:
     """
     global _agent
     if _agent is None:
-        print("[INFO] Building ePARS agent...")
-        _agent = build_agent()
-        print("[INFO] Agent ready.\n")
+        with _agent_lock:
+            if _agent is None:
+                print("[INFO] Building ePARS agent...")
+                _agent = build_agent()
+                print("[INFO] Agent ready.\n")
 
     result = _agent.invoke({"messages": [HumanMessage(content=query)]})
 

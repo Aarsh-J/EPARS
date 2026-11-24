@@ -13,9 +13,6 @@ from fastapi import APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-import burnout_monitor as bm
-from tools import flag_burnout_alert
-
 router = APIRouter(prefix="/burnout", tags=["burnout"])
 
 # assignment_id -> {"employee": {...}, "task": {...}, "decision": {...}}
@@ -25,6 +22,8 @@ PENDING: dict = {}
 @router.get("/scan")
 def scan():
     try:
+        import burnout_monitor as bm
+
         items = bm.run_step1_decide()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Burnout scan failed: {e}")
@@ -65,6 +64,8 @@ def execute(req: ExecuteReq):
     if item["decision"].get("action", "none") == "none":
         raise HTTPException(400, "This task has no action to execute.")
     try:
+        import burnout_monitor as bm
+
         result = bm.execute_decision(item["employee"]["employee_id"], item["task"], item["decision"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -79,6 +80,8 @@ class AlertReq(BaseModel):
 
 @router.post("/alert")
 def alert(req: AlertReq):
+    from tools import flag_burnout_alert
+
     emp = next((i["employee"] for i in PENDING.values()
                 if i["employee"]["employee_id"] == req.employee_id), None)
     if not emp:

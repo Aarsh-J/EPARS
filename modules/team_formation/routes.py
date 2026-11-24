@@ -14,14 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, StrictInt
 from psycopg2.errors import SerializationFailure, UniqueViolation
 
-from ..ml.team_formation_features import get_connection, list_projects_with_open_tasks
-from ..ml.team_formation_predict import (
-    InfeasibleTeamFormationError,
-    TeamFormationSearchExhaustedError,
-    check_composition,
-    recommend_teams,
-)
-from .persistence import ConfirmationError, confirm_team_formation
+from .persistence import ConfirmationError, confirm_team_formation, get_connection
 
 router = APIRouter(prefix="/team_formation", tags=["team_formation"])
 logger = logging.getLogger(__name__)
@@ -50,10 +43,18 @@ class ProjectUpdateRequest(BaseModel):
         extra = "forbid"
 
 
+def recommend_teams(project_id: str, top_m: int = 5, num_teams: int = 3, task_ids=None):
+    from ..ml.team_formation_predict import recommend_teams as predict_teams
+
+    return predict_teams(project_id, top_m=top_m, num_teams=num_teams, task_ids=task_ids)
+
+
 @router.get("/projects")
 def list_projects(limit: int = 200):
     """Projects that have open tasks, for the selector UI."""
     try:
+        from ..ml.team_formation_features import list_projects_with_open_tasks
+
         return list_projects_with_open_tasks(limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -161,6 +162,11 @@ def recommend(
     ),
 ):
     """Recommend fixed-size rosters with one eligible assignee per open task."""
+    from ..ml.team_formation_predict import (
+        InfeasibleTeamFormationError,
+        TeamFormationSearchExhaustedError,
+    )
+
     try:
         ids = [t.strip() for t in task_ids.split(",") if t.strip()] if task_ids else None
         return recommend_teams(project_id, top_m=top_m, num_teams=num_teams, task_ids=ids)
@@ -205,6 +211,8 @@ def confirm(project_id: str, payload: TeamFormationConfirmationRequest):
 def composition(employee_ids: str = Query(..., description="Comma-separated employee_ids, at least 2")):
     """How typical is this exact roster vs historical teams? Advisory flag + reasons."""
     try:
+        from ..ml.team_formation_predict import check_composition
+
         ids = [e.strip() for e in employee_ids.split(",") if e.strip()]
         return check_composition(ids)
     except ValueError as e:

@@ -20,16 +20,6 @@ try:
 except ModuleNotFoundError:
     from epars_agent.agent.db import get_connection
 
-from calendar_client import create_event, update_event, delete_event
-
-# Task Assignment model (Model 3, Layer 3) lives in modules/ml/, outside this
-# package. It reuses this same db.py via a bare `from db import get_connection`,
-# which works because src/epars_agent/agent (this directory) is already on
-# sys.path when tools.py loads — so we only need the repo root added too, for
-# `modules` itself to be importable.
-from modules.ml.task_assignment_predict import recommend_top_n, score_pair
-from modules.ml.predict import predict_performance, predict_burnout
-from modules.ml.team_formation_predict import recommend_teams, check_composition
 # ── Utility ────────────────────────────────────────────────────────────────────
 
 def _serialize(obj):
@@ -158,6 +148,8 @@ def get_employee_ml_scores(employee_id: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 def compute_live_performance_score(employee_id: str, review_id: str = None) -> dict:
     try:
+        from modules.ml.predict import predict_performance
+
         return {"employee_id": employee_id, **predict_performance(employee_id, review_id)}
     except Exception as e:
         return {"employee_id": employee_id, "error": str(e)}
@@ -172,6 +164,8 @@ def compute_live_performance_score(employee_id: str, review_id: str = None) -> d
 # ══════════════════════════════════════════════════════════════════════════════
 def compute_live_burnout_score(employee_id: str) -> dict:
     try:
+        from modules.ml.predict import predict_burnout
+
         return {"employee_id": employee_id, **predict_burnout(employee_id)}
     except Exception as e:
         return {"employee_id": employee_id, "error": str(e)}
@@ -351,6 +345,8 @@ def find_available_employees(required_skills: str, required_role: str = "", requ
 # ══════════════════════════════════════════════════════════════════════════════
 def recommend_employees_for_task(task_id: str, top_n: int = 3) -> list:
     try:
+        from modules.ml.task_assignment_predict import recommend_top_n
+
         return recommend_top_n(task_id, top_n=top_n)
     except ValueError as e:
         return [{"error": str(e)}]
@@ -366,6 +362,8 @@ def recommend_employees_for_task(task_id: str, top_n: int = 3) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 def score_employee_for_task(task_id: str, employee_id: str) -> dict:
     try:
+        from modules.ml.task_assignment_predict import score_pair
+
         return score_pair(task_id, employee_id)
     except ValueError as e:
         return {"error": str(e)}
@@ -374,6 +372,8 @@ def score_employee_for_task(task_id: str, employee_id: str) -> dict:
 
 def recommend_team_for_project(project_id: str, num_teams: int = 3, top_m: int = 5) -> list:
     try:
+        from modules.ml.team_formation_predict import recommend_teams
+
         return recommend_teams(project_id, top_m=top_m, num_teams=num_teams)
     except ValueError as e:
         return [{"error": str(e)}]
@@ -382,6 +382,8 @@ def recommend_team_for_project(project_id: str, num_teams: int = 3, top_m: int =
 
 def check_team_composition(employee_ids: list) -> dict:
     try:
+        from modules.ml.team_formation_predict import check_composition
+
         return check_composition(employee_ids)
     except ValueError as e:
         return {"error": str(e)}
@@ -525,6 +527,8 @@ def flag_burnout_alert(employee_id: str, burnout_score: float,
 # Used by : Task assignment agent / burnout monitoring loop (Step 6).
 # ══════════════════════════════════════════════════════════════════════════════
 def create_calendar_event(task_id: str, employee_id: str, start_time: str, end_time: str) -> dict:
+    from calendar_client import create_event, delete_event
+
     # Pull task description for the event summary
     task = get_task_details(task_id)
     if "error" in task:
@@ -617,6 +621,8 @@ def create_calendar_event(task_id: str, employee_id: str, start_time: str, end_t
 # ══════════════════════════════════════════════════════════════════════════════
 
 def reschedule_calendar_event(task_id: str, employee_id: str, new_start_time: str, new_end_time: str) -> dict:
+    from calendar_client import update_event
+
     lookup_sql = """
         SELECT google_event_id FROM task_assignments
         WHERE task_id = %s AND employee_id = %s
@@ -662,6 +668,8 @@ def reschedule_calendar_event(task_id: str, employee_id: str, new_start_time: st
 # ══════════════════════════════════════════════════════════════════════════════
 
 def cancel_calendar_event(task_id: str, employee_id: str) -> dict:
+    from calendar_client import delete_event
+
     lookup_sql = """
         SELECT google_event_id FROM task_assignments
         WHERE task_id = %s AND employee_id = %s
