@@ -5,11 +5,17 @@ Run: python scripts/test_ml_models.py [employee_id ...]
 import sys
 from pathlib import Path
 
-SRC_DIR = Path(__file__).resolve().parent.parent / "src"
-sys.path.insert(0, str(SRC_DIR / "epars_agent" / "agent"))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = ROOT / "src"
+for candidate in (str(SRC_DIR / "epars_agent" / "agent"), str(SRC_DIR), str(ROOT)):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
 
-from db import get_connection
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
+
 from modules.ml.predict import predict_performance, predict_burnout
 
 

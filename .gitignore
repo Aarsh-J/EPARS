@@ -12,3 +12,4 @@ sa_key.json
 *.log
 uvicorn_log.txt
 uvicorn_run.log
+src/epars_agent/test_traces

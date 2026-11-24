@@ -5,9 +5,21 @@ All tools are also wrapped as LangChain Tool objects at the bottom of this file,
 Tables used: employees, tasks, task_assignments, workload_history, burnout_indicators, performance_reviews, team_formations
 """
 import json
-from datetime import date, datetime
+import sys
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from db import get_connection
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+for candidate in (str(_REPO_ROOT / "src" / "epars_agent" / "agent"), str(_REPO_ROOT), str(_REPO_ROOT / "src")):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
+
 from calendar_client import create_event, update_event, delete_event
 
 # Task Assignment model (Model 3, Layer 3) lives in modules/ml/, outside this
@@ -15,14 +27,9 @@ from calendar_client import create_event, update_event, delete_event
 # which works because src/epars_agent/agent (this directory) is already on
 # sys.path when tools.py loads — so we only need the repo root added too, for
 # `modules` itself to be importable.
-import sys
-from pathlib import Path
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 from modules.ml.task_assignment_predict import recommend_top_n, score_pair
 from modules.ml.predict import predict_performance, predict_burnout
-from modules.ml.task_assignment_predict import recommend_top_n, score_pair
+from modules.ml.team_formation_predict import recommend_teams, check_composition
 # ── Utility ────────────────────────────────────────────────────────────────────
 
 def _serialize(obj):
@@ -365,12 +372,28 @@ def score_employee_for_task(task_id: str, employee_id: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+def recommend_team_for_project(project_id: str, num_teams: int = 3, top_m: int = 5) -> list:
+    try:
+        return recommend_teams(project_id, top_m=top_m, num_teams=num_teams)
+    except ValueError as e:
+        return [{"error": str(e)}]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+def check_team_composition(employee_ids: list) -> dict:
+    try:
+        return check_composition(employee_ids)
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": str(e)}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TOOL 6 — assign_task
 # Purpose : Write a new task assignment record to the database.
 # Used by : Task assignment agent (the actual write action).
 # ══════════════════════════════════════════════════════════════════════════════
-def assign_task(task_id: str, employee_id: str, assignment_method: str = "agentic_ai", skill_match_score: float = 0.0) -> dict:
+def assign_task(task_id: str, employee_id: str, assignment_method: str = "AI-Recommended", skill_match_score: float = 0.0) -> dict:
     next_id_sql = """
         SELECT COALESCE(MAX(CAST(SUBSTRING(assignment_id FROM 4) AS INTEGER)), 0) AS max_num
         FROM task_assignments
@@ -395,7 +418,7 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
             CURRENT_DATE,
             %s,
             %s,
-            'Assigned'
+            'In Progress'
         FROM tasks t
         WHERE t.task_id = %s
         RETURNING assignment_id
@@ -416,6 +439,15 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
         SET completion_status = 'Reassigned'
         WHERE task_id = %s AND completion_status NOT IN ('Completed', 'Cancelled', 'Reassigned')
     """
+    get_old_owner_sql = """
+        SELECT employee_id FROM task_assignments
+        WHERE task_id = %s AND completion_status NOT IN ('Completed', 'Cancelled', 'Reassigned')
+    """
+    update_old_employee_sql = """
+        UPDATE employees
+        SET current_project_count = GREATEST(current_project_count - 1, 0)
+        WHERE employee_id = %s
+    """
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -423,7 +455,13 @@ def assign_task(task_id: str, employee_id: str, assignment_method: str = "agenti
                 max_row = cur.fetchone()
                 next_num = (max_row["max_num"] if max_row else 0) + 1
                 new_id = f"ASG{next_num:04d}"
+                cur.execute(get_old_owner_sql, (task_id,))
+                old_owner_row = cur.fetchone()
+                old_owner_id = old_owner_row["employee_id"] if old_owner_row else None
+
                 cur.execute(supersede_sql, (task_id,))
+                if old_owner_id:
+                    cur.execute(update_old_employee_sql, (old_owner_id,))
 
                 cur.execute(insert_sql, (new_id, task_id, employee_id, assignment_method, skill_match_score, task_id))
                 row = cur.fetchone()
@@ -663,190 +701,21 @@ def cancel_calendar_event(task_id: str, employee_id: str) -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-# ══════════════════════════════════════════════════════════════════════════════
-# LANGCHAIN TOOL WRAPPERS
-# ══════════════════════════════════════════════════════════════════════════════
-try:
-    try:
-        from langchain.tools import Tool
-    except ImportError:
-        from langchain_core.tools import Tool
-    # Tool 1
-    employee_profile_tool = Tool(
-        name="get_employee_profile",
-        func=lambda eid: json.dumps(get_employee_profile(eid.strip()), default=_serialize),
-        description=(
-            "Fetches the full profile of an employee given their employee_id (e.g. 'EMP042'). "
-            "Returns skills, role, seniority, availability, performance history, "
-            "stress level, and capacity. Use this to understand who an employee is before "
-            "making any recommendation about them."
-        ),
-    )
-    # Tool 2
-    ml_scores_tool = Tool(
-        name="get_employee_ml_scores",
-        func=lambda eid: json.dumps(get_employee_ml_scores(eid.strip()), default=_serialize),
-        description=(
-            "Fetches the latest PEM (performance) score and WBP (burnout) score for an "
-            "employee. Input is employee_id (e.g. 'EMP042'). Returns pem_score (0-100), "
-            "performance_rating, burnout_score (0-1.0), burnout_category, burnout_trend, "
-            "and intervention_urgency. Always call this before deciding to assign a task "
-            "or flag burnout."
-        ),
-    )
-    # Tool 3
-    workload_tool = Tool(
-        name="get_employee_workload",
-        func=lambda eid: json.dumps(get_employee_workload(eid.strip()), default=_serialize),
-        description=(
-            "Returns the current workload of an employee: how many active tasks they have, "
-            "estimated hours remaining, weekly capacity, and recent daily hours worked. "
-            "Input is employee_id. Use this before assigning new tasks to check if the "
-            "employee has capacity."
-        ),
-    )
-    # Tool 4
-    task_details_tool = Tool(
-        name="get_task_details",
-        func=lambda tid: json.dumps(get_task_details(tid.strip()), default=_serialize),
-        description=(
-            "Fetches full details of a task given its task_id (e.g. 'TASK0042'). "
-            "Returns required skills, priority, complexity, estimated hours, due date, "
-            "current status, and whether it is overdue. Call this first whenever you "
-            "need to assign a task."
-        ),
-    )
-    # Tool 5
-    find_employees_tool = Tool(
-        name="find_available_employees",
-        func=lambda q: json.dumps(
-            find_available_employees(
-                **{k: v for k, v in
-                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
-            ), default=_serialize
-        ),
-        description=(
-            "Finds available employees who match the required skills. "
-            "Input format: 'required_skills=Python, Django|required_role=Software Engineer|required_seniority=Mid' "
-            "Only required_skills is mandatory. Returns up to 5 candidates ranked by "
-            "performance score, with their burnout risk and availability status."
-        ),
-    )
-    # Tool 6
-    assign_task_tool = Tool(
-        name="assign_task",
-        func=lambda q: json.dumps(
-            assign_task(
-                **{k: v for k, v in
-                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
-            ), default=_serialize
-        ),
-        description=(
-            "Assigns a task to an employee in the database. "
-            "Input format: 'task_id=TASK0042|employee_id=EMP042|skill_match_score=85' "
-            "Only call this AFTER you have verified the employee's PEM score, "
-            "burnout score, workload, and retrieved the relevant HR policy. "
-            "Returns success status and the new assignment_id."
-        ),
-    )
-    # Tool 7
-    flag_burnout_tool = Tool(
-        name="flag_burnout_alert",
-        func=lambda q: json.dumps(
-            flag_burnout_alert(
-                **{k: v for k, v in
-                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
-            ), default=_serialize
-        ),
-        description=(
-            "Logs a burnout intervention alert for an employee and updates their "
-            "availability status. Input format: "
-            "'employee_id=EMP042|burnout_score=0.75|urgency=High|recommended_action=Reduce workload and schedule 1-1' "
-            "Call this when the WBP burnout score is above 0.70 or when the agent "
-            "determines immediate intervention is required."
-        ),
-    )
-    # Tool 8
-    create_calendar_event_tool = Tool(
-        name="create_calendar_event",
-        func=lambda q: json.dumps(
-            create_calendar_event(
-                **{k: v for k, v in
-                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
-            ), default=_serialize
-        ),
-        description=(
-            "Creates a Google Calendar event for a task assignment. "
-            "Input format: 'task_id=TASK0042|employee_id=EMP042|"
-            "start_time=2026-08-10T10:00:00|end_time=2026-08-10T12:00:00' "
-            "Call this after assign_task to put the work on the employee's calendar."
-        ),
-    )
-    # Tool 9
-    reschedule_calendar_event_tool = Tool(
-        name="reschedule_calendar_event",
-        func=lambda q: json.dumps(
-            reschedule_calendar_event(
-                **{k: v for k, v in
-                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
-            ), default=_serialize
-        ),
-        description=(
-            "Reschedules an existing task's calendar event to a new time. "
-            "Input format: 'task_id=TASK0042|employee_id=EMP042|"
-            "new_start_time=2026-08-12T10:00:00|new_end_time=2026-08-12T12:00:00' "
-            "Use this when an employee's burnout score is high and their workload "
-            "needs to be spread out, rather than reassigned to someone else."
-        ),
-    )
-    # Tool 10
-    cancel_calendar_event_tool = Tool(
-        name="cancel_calendar_event",
-        func=lambda q: json.dumps(
-            cancel_calendar_event(
-                **{k: v for k, v in
-                   [item.split("=", 1) for item in q.split("|") if "=" in item]}
-            ), default=_serialize
-        ),
-        description=(
-            "Cancels the calendar event for a task assignment. "
-            "Input format: 'task_id=TASK0042|employee_id=EMP042' "
-            "Call this when reassigning a task to a different employee — "
-            "cancel the old owner's event, then create_calendar_event for the new owner."
-        ),
-    )
-    # Collect all tools for easy import in Step 3
-    ALL_TOOLS = [
-        employee_profile_tool,
-        ml_scores_tool,
-        workload_tool,
-        task_details_tool,
-        find_employees_tool,
-        assign_task_tool,
-        flag_burnout_tool,
-        create_calendar_event_tool,
-        reschedule_calendar_event_tool,
-        cancel_calendar_event_tool,
-    ]
-    print("[INFO] All 10 LangChain tools registered successfully.")
-
-except ImportError:
-    ALL_TOOLS = []
-    print("[WARN] LangChain not installed. ALL_TOOLS is empty. "
-          "Install langchain to use the tool wrappers.")
-
-
 # ── Quick smoke test ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
 
     test_employee = sys.argv[1] if len(sys.argv) > 1 else "EMP001"
     test_task     = sys.argv[2] if len(sys.argv) > 2 else "TASK0001"
+    start_1 = (datetime.now() + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+    end_1   = start_1 + timedelta(hours=2)
 
+    start_2 = start_1 + timedelta(days=2)   # reschedule slot, a couple days after the first
+    end_2   = start_2 + timedelta(hours=2)
     print(f"\n{'='*50}")
     print(f"Testing tools with employee={test_employee}, task={test_task}")
     print('='*50)
-    
+
     print("\n[1] get_employee_profile")
     result = get_employee_profile(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
@@ -855,27 +724,39 @@ if __name__ == "__main__":
     result = get_employee_ml_scores(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
 
-    print("\n[3] get_employee_workload")
+    print("\n[3] compute_live_performance_score")
+    result = compute_live_performance_score(test_employee)
+    print(json.dumps(result, indent=2, default=_serialize))
+
+    print("\n[4] compute_live_burnout_score")
+    result = compute_live_burnout_score(test_employee)
+    print(json.dumps(result, indent=2, default=_serialize))
+
+    print("\n[5] get_employee_workload")
     result = get_employee_workload(test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
 
-    print("\n[4] get_task_details")
+    print("\n[6] recommend_employees_for_task")
+    result = recommend_employees_for_task(test_task, top_n=3)
+    print(json.dumps(result, indent=2, default=_serialize))
+
+    print("\n[7] get_task_details")
     result = get_task_details(test_task)
     print(json.dumps(result, indent=2, default=_serialize))
 
-    print("\n[5] find_available_employees")
+    print("\n[8] find_available_employees")
     result = find_available_employees("Python", limit=3)
     print(json.dumps(result, indent=2, default=_serialize))
     
-    print("\n[6] create_calendar_event")
-    result = create_calendar_event(test_task, test_employee, "2026-08-10T10:00:00", "2026-08-10T12:00:00")
+    print("\n[9] create_calendar_event")
+    result = create_calendar_event(test_task, test_employee, start_1.isoformat(), end_1.isoformat())
     print(json.dumps(result, indent=2, default=_serialize))
     
-    print("\n[7] reschedule_calendar_event")
-    result = reschedule_calendar_event(test_task, test_employee, "2026-08-12T10:00:00", "2026-08-12T12:00:00")
+    print("\n[10] reschedule_calendar_event")
+    result = reschedule_calendar_event(test_task, test_employee, start_2.isoformat(), end_2.isoformat())
     print(json.dumps(result, indent=2, default=_serialize))
     
-    print("\n[8] cancel_calendar_event")
+    print("\n[11] cancel_calendar_event")
     result = cancel_calendar_event(test_task, test_employee)
     print(json.dumps(result, indent=2, default=_serialize))
     

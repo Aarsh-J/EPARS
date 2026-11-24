@@ -10,7 +10,19 @@ SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 sys.path.insert(0, str(SRC_DIR / "epars_agent" / "agent"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from db import get_connection
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = ROOT / "src"
+for candidate in (str(SRC_DIR / "epars_agent" / "agent"), str(SRC_DIR), str(ROOT)):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+try:
+    from db import get_connection
+except ModuleNotFoundError:
+    from epars_agent.agent.db import get_connection
 from modules.ml.task_assignment_features import get_open_tasks
 from modules.ml.task_assignment_predict import recommend_top_n, score_pair
 
