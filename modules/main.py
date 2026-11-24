@@ -31,6 +31,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .auth import AuthenticationMiddleware, router as auth_router  # noqa: E402
 from .performance.routes import router as performance_router  # noqa: E402  (needs SRC_DIR on path first)
 from .burnout.routes import router as burnout_router  # noqa: E402
 from .agent.routes import router as agent_router  # noqa: E402
@@ -53,7 +54,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ePARS API", lifespan=lifespan)
 
 _default_origins = "http://localhost:5173"
-allowed_origins = os.getenv("FRONTEND_ORIGIN", _default_origins).split(",")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGIN", _default_origins).split(",")
+    if origin.strip()
+]
+
+# CORS is registered after authentication so browser preflight and auth errors
+# receive the appropriate CORS headers.
+app.add_middleware(AuthenticationMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +72,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(performance_router, prefix="/api")
 app.include_router(burnout_router, prefix="/api")
 app.include_router(agent_router, prefix="/api")
