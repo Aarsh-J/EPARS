@@ -8,6 +8,27 @@ any change** until the branches are merged.
 Base URL: `http://localhost:8000` in dev (`VITE_API_URL` in the frontend's `.env`), the
 deployed Render URL in production. All routes are prefixed `/api`.
 
+## Authentication
+
+The backend sets a short-lived HttpOnly session cookie and returns a session-bound
+`csrf_token` from login and `/api/auth/me`. Send the token in the `X-CSRF-Token` header
+for state-changing requests. The frontend keeps the token in memory and refreshes it
+from `/api/auth/me` after a page reload; it cannot read cookies scoped to the API's
+different origin.
+
+For hosted frontend/API origins on different sites, configure
+`AUTH_COOKIE_SAMESITE=none` and `AUTH_COOKIE_SECURE=true` on the backend.
+
+### `POST /api/auth/login`
+
+Returns `{ "user": { "id", "username", "role" }, "csrf_token": "..." }` and sets the
+HttpOnly session cookie.
+
+### `GET /api/auth/me`
+
+Returns the authenticated user's `id`, `username`, and `role`, plus the session-bound
+`csrf_token`.
+
 Server: `modules/main.py` (FastAPI). Every route is a thin wrapper — it calls straight into
 functions in `src/epars_agent` / `src/epars_policies` and does not reimplement business
 logic. The function(s) backing each route are named below so you know where to look/change

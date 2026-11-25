@@ -1,12 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
-function readCookie(name) {
-  const prefix = `${name}=`;
-  const cookie = document.cookie
-    .split("; ")
-    .find((entry) => entry.startsWith(prefix));
-  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : "";
-}
+let csrfToken = "";
 
 export async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -14,9 +7,8 @@ export async function request(path, options = {}) {
     headers.set("Content-Type", "application/json");
   }
   const method = (options.method || "GET").toUpperCase();
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    const csrfToken = readCookie("epars_csrf");
-    if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken) {
+    headers.set("X-CSRF-Token", csrfToken);
   }
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -32,18 +24,29 @@ export async function request(path, options = {}) {
     );
     error.status = res.status;
     if (res.status === 401 && !path.endsWith("/auth/login")) {
+      csrfToken = "";
       window.dispatchEvent(new Event("epars:unauthorized"));
     }
     throw error;
   }
-  return res.json();
+  const result = await res.json();
+  if (path.endsWith("/auth/login") || path.endsWith("/auth/me")) {
+    if (typeof result.csrf_token !== "string" || !result.csrf_token) {
+      csrfToken = "";
+      throw new Error("The backend did not return a CSRF token. Update the backend and try again.");
+    }
+    csrfToken = result.csrf_token;
+  } else if (path.endsWith("/auth/logout")) {
+    csrfToken = "";
+  }
+  return result;
 }
 
 export function login(username, password) {
   return request("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
-  });
+  }).then(({ user }) => ({ user }));
 }
 
 export function logout() {
@@ -51,7 +54,7 @@ export function logout() {
 }
 
 export function getCurrentUser() {
-  return request("/api/auth/me");
+  return request("/api/auth/me").then(({ csrf_token, ...user }) => user);
 }
 
 export function getEmployees() {
